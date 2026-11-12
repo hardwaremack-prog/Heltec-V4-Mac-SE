@@ -130,6 +130,7 @@ $('connect').disabled = !ok;
 // ---- step 2: connect
 let transport = null, loader = null, flashBytes = 8 * 1048576;
 const connButtons = on => { for (const id of ['flash', 'disc', 'backup', 'restore']) $(id).disabled = !on; $('connect').disabled = on; };
+$('baud').value = '921600';
 const term = { clean(){}, writeLine: s => log(s), write: s => { $('log').textContent += s; } };
 $('connect').onclick = async () => {
   try {
@@ -210,6 +211,22 @@ $('copyLog').onclick = async () => {
 function b64ToBinStr(b64) { return atob(b64); }
 async function fileToBinStr(f) { const a = new Uint8Array(await f.arrayBuffer()); let s = ''; for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000)); return s; }
 $('file').onchange = () => { $('fwFile').checked = true; };
+// Talk to the board again at a slower speed (after a write failed partway)
+async function reconnectSlow() {
+  const port = transport.device;
+  try { await transport.disconnect(); } catch {}
+  await new Promise(r => setTimeout(r, 500));
+  $('baud').value = '115200';
+  transport = new Transport(port, true);
+  loader = new ESPLoader({ transport, baudrate: 115200, terminal: term, romBaudrate: 115200 });
+  await loader.main();
+}
+async function writeImage(data) {
+  await loader.writeFlash({ fileArray: [{ data, address: 0 }], flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep',
+    eraseAll: false, compress: true,
+    reportProgress: (i, written, total) => { $('prog').value = Math.round(written / total * 100); },
+    calculateMD5Hash: s => md5(s) });
+}
 $('flash').onclick = async () => {
   let data;
   if ($('fwFile').checked) {
@@ -222,11 +239,17 @@ $('flash').onclick = async () => {
   $('prog').hidden = false; $('prog').value = 0;
   try {
     if ($('erase').checked) { set('flashMsg', 'Erasing the whole board (about 20-40 seconds)...'); await loader.eraseFlash(); log('Erased.'); }
-    set('flashMsg', 'Writing... keep the board plugged in.');
-    await loader.writeFlash({ fileArray: [{ data, address: 0 }], flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep',
-      eraseAll: false, compress: true,
-      reportProgress: (i, written, total) => { $('prog').value = Math.round(written / total * 100); },
-      calculateMD5Hash: s => md5(s) });
+    set('flashMsg', 'Writing... keep the board plugged in, and don\'t press its buttons.');
+    try { await writeImage(data); }
+    catch (e) {
+      // Many boards' USB chips can't keep up at the faster speeds: start again, slowly
+      if (+$('baud').value <= 115200) throw e;
+      log('Write failed at ' + $('baud').value + ' baud (' + (e.message || e) + '); trying again at 115200.');
+      set('flashMsg', 'That speed was too fast for this board. Starting again at Slow speed (about 2 minutes)... keep it plugged in.', 'warn');
+      $('prog').value = 0;
+      await reconnectSlow();
+      await writeImage(data);
+    }
     set('flashMsg', 'Done and verified. Restarting the board...', 'ok');
     // Restart into the new firmware. (esptool-js 0.5.7's own hard reset only releases RTS and
     // never pulls EN low, so the board stayed in download mode until RST was pressed.)

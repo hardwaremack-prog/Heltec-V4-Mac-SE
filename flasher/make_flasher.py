@@ -6,7 +6,7 @@
 import sys, base64, re, hashlib
 bundle, fw = sys.argv[1], sys.argv[2]
 board = 'esp32' if '--esp32' in sys.argv[3:] else 'v4' if '--v4' in sys.argv[3:] else 'v3'
-S3 = dict(PRG='PRG', RST='RST', CHIPRE='/ESP32-S3/i', CHIPNAME='ESP32-S3',
+S3 = dict(BAUD='921600', PRG='PRG', RST='RST', CHIPRE='/ESP32-S3/i', CHIPNAME='ESP32-S3',
           OTHERCHIP='A plain ESP32 dev board (NodeMCU) needs ESP32-Mac128k-Flasher.html.',
           RESTARTHINT='if the screen stays dark, tap <kbd>RST</kbd> once')
 BOARDS = {
@@ -19,7 +19,7 @@ BOARDS = {
               DRIVERHELP='The V4 needs no extra driver: it uses the ESP32-S3&apos;s own USB. If it doesn&apos;t show up, put it in download mode (hold <kbd>PRG</kbd>, tap <kbd>RST</kbd>, let go) and click Connect again.',
               WRONGBOARD='Is this a V3? Use Heltec-V3-Mac128k-Flasher.html for the V3.', BACKUP='heltec-v4-macse-backup', OUT='Heltec-V4-Mac-SE-Flasher.html'),
   'esp32': dict(NAME='ESP32 Mac 128K', BOARD='plain ESP32 dev board (NodeMCU-32S / ESP32-DevKitC)', SHORT='ESP32 board', AP='ESP32-Mac-Setup', FLASHMB='4',
-              PRG='BOOT', RST='EN', CHIPRE='/^ESP32(?!-[SCHP])/i', CHIPNAME='ESP32 (ESP32-WROOM)',
+              BAUD='115200', PRG='BOOT', RST='EN', CHIPRE='/^ESP32(?!-[SCHP])/i', CHIPNAME='ESP32 (ESP32-WROOM)',
               OTHERCHIP='For a Heltec V3 use Heltec-V3-Mac128k-Flasher.html; for a V4, Heltec-V4-Mac-SE-Flasher.html.',
               RESTARTHINT='if it doesn&apos;t, press <kbd>EN</kbd> once; the blue LED blinks while a browser is watching',
               PORTHELP='Click <b>Connect</b> and pick the board. On Windows it shows as <b>CP210x</b>, <b>Silicon Labs</b> or <b>CH340</b> (COM port); on a Mac, <b>usbserial</b> or <b>wchusbserial</b>.',
