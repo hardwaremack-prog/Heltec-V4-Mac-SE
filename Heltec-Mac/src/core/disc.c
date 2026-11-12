@@ -151,12 +151,19 @@ static int      disc_xfer(void *infop, int wr, uint32_t addr, void *buffer, uint
 {
         sony_drinfo_t *info = (sony_drinfo_t *)infop;
 #ifdef UMAC_RAM_SPLIT
+        /* through a small buffer, a byte at a time (see machw.h: a bank may be word-only RAM) */
+        uint8_t tmp[512];
         (void)buffer;
         while (length) {
-                size_t n = (RAM_BANK_MASK + 1) - (addr & RAM_BANK_MASK);   /* to the end of this bank */
-                if (n > length) n = length;
-                int r = wr ? info->op_write(info->op_ctx, ram_ptr(addr), position, n)
-                           : info->op_read(info->op_ctx, ram_ptr(addr), position, n);
+                size_t n = length > sizeof tmp ? sizeof tmp : length;
+                int r;
+                if (wr) {
+                        for (size_t i = 0; i < n; i++) tmp[i] = ram_rd8(MACRAM(addr + i));
+                        r = info->op_write(info->op_ctx, tmp, position, n);
+                } else {
+                        r = info->op_read(info->op_ctx, tmp, position, n);
+                        for (size_t i = 0; r >= 0 && i < n; i++) ram_wr8(MACRAM(addr + i), tmp[i]);
+                }
                 if (r < 0) return r;
                 addr = MACRAM(addr + n); position += n; length -= n;
         }

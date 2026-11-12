@@ -67,30 +67,64 @@ static inline uint8_t *ram_get_base(void)
 #ifdef UMAC_RAM_SPLIT
 /* Heltec-Mac on a plain ESP32: the Mac's 128 KB of RAM is four 32 KB banks wherever they
  * fit (bank = address bits 15-16), because that chip's free memory is in pieces and none is
- * 128 KB.  Words at even addresses never straddle two banks; longs and odd words might, so
- * they go in halves.  The screen and sound buffers sit inside the top bank. */
+ * 128 KB.  One bank may even be instruction RAM, which only takes whole 32-bit reads and
+ * writes, so every access here works on aligned 32-bit words (Mac byte n of a word is bits
+ * 8n..8n+7 on this little-endian CPU).  The screen and sound buffers are in the top bank,
+ * which is always ordinary RAM, so the screen can still be read directly. */
 #define RAM_BANK_SHIFT  15
 #define RAM_BANK_SIZE   (1u << RAM_BANK_SHIFT)
 #define RAM_BANK_MASK   (RAM_BANK_SIZE - 1)
 #define RAM_BANKS       4
 extern uint8_t *_ram_bank[RAM_BANKS];
-static inline uint8_t *ram_ptr(uint32_t a)
+static inline uint8_t *ram_ptr(uint32_t a)             /* only for the top (screen) bank */
 {
         return _ram_bank[(a >> RAM_BANK_SHIFT) & (RAM_BANKS - 1)] + (a & RAM_BANK_MASK);
 }
+static inline volatile uint32_t *ram_wptr(uint32_t a)
+{
+        return (volatile uint32_t *)(_ram_bank[(a >> RAM_BANK_SHIFT) & (RAM_BANKS - 1)] + (a & RAM_BANK_MASK & ~3u));
+}
+static inline uint32_t ram_rd8(uint32_t a)
+{
+        return (*ram_wptr(a) >> ((a & 3) * 8)) & 0xff;
+}
+static inline void ram_wr8(uint32_t a, uint32_t v)
+{
+        volatile uint32_t *p = ram_wptr(a);
+        unsigned s = (a & 3) * 8;
+        *p = (*p & ~(0xffu << s)) | ((v & 0xff) << s);
+}
 static inline uint32_t ram_rd16(uint32_t a)
 {
-        uint8_t *p = ram_ptr(a);
-        if ((a & RAM_BANK_MASK) != RAM_BANK_MASK)
-                return (p[0] << 8) | p[1];
-        return (p[0] << 8) | *ram_ptr(a + 1);
+        if (!(a & 1)) {
+                uint32_t h = (*ram_wptr(a) >> ((a & 2) * 8)) & 0xffff;
+                return ((h & 0xff) << 8) | (h >> 8);
+        }
+        return (ram_rd8(a) << 8) | ram_rd8(a + 1);
 }
 static inline void ram_wr16(uint32_t a, uint32_t v)
 {
-        uint8_t *p = ram_ptr(a);
-        p[0] = (v >> 8) & 0xff;
-        if ((a & RAM_BANK_MASK) != RAM_BANK_MASK) p[1] = v & 0xff;
-        else *ram_ptr(a + 1) = v & 0xff;
+        if (!(a & 1)) {
+                volatile uint32_t *p = ram_wptr(a);
+                unsigned s = (a & 2) * 8;
+                uint32_t h = ((v >> 8) & 0xff) | ((v & 0xff) << 8);
+                *p = (*p & ~(0xffffu << s)) | (h << s);
+                return;
+        }
+        ram_wr8(a, v >> 8);
+        ram_wr8(a + 1, v);
+}
+static inline uint32_t ram_rd32(uint32_t a)
+{
+        if (!(a & 3))
+                return __builtin_bswap32(*ram_wptr(a));
+        return (ram_rd16(a) << 16) | ram_rd16(a + 2);
+}
+static inline void ram_wr32(uint32_t a, uint32_t v)
+{
+        if (!(a & 3)) { *ram_wptr(a) = __builtin_bswap32(v); return; }
+        ram_wr16(a, v >> 16);
+        ram_wr16(a + 2, v & 0xffff);
 }
 #else
 static inline uint8_t *ram_ptr(uint32_t a)
@@ -167,15 +201,14 @@ extern int overlay;
 /* Specific RAM/ROM access: */
 
 #ifdef UMAC_RAM_SPLIT
-#define RAM_RD8(addr)                   (*ram_ptr(addr))
+#define RAM_RD8(addr)                   ram_rd8(addr)
 #define RAM_RD16(addr)                  ram_rd16(addr)
-#define RAM_RD_ALIGNED_BE16(addr)       (__builtin_bswap16(*(uint16_t *)ram_ptr(addr)))
-#define RAM_RD32(addr)                  ((ram_rd16(addr) << 16) | ram_rd16((addr) + 2))
+#define RAM_RD_ALIGNED_BE16(addr)       ram_rd16(addr)
+#define RAM_RD32(addr)                  ram_rd32(addr)
 
-#define RAM_WR8(addr, val)              do { *ram_ptr(addr) = (val) & 0xff; } while (0)
+#define RAM_WR8(addr, val)              ram_wr8(addr, val)
 #define RAM_WR16(addr, val)             ram_wr16(addr, val)
-#define RAM_WR32(addr, val)             do { uint32_t a_ = (addr), v_ = (val); \
-                ram_wr16(a_, v_ >> 16); ram_wr16(a_ + 2, v_ & 0xffff); } while (0)
+#define RAM_WR32(addr, val)             ram_wr32(addr, val)
 #else
 #define RAM_RD8(addr)                   READ_BYTE(_ram_base, addr)
 #define RAM_RD16(addr)                  READ_WORD(_ram_base, addr)

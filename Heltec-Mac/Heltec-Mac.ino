@@ -651,17 +651,23 @@ void setup() {
   // is four 32 KB banks (see machw.h). Set them aside now, before Wi-Fi takes its share.
   Serial.printf("Free %u, largest piece %u\n", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  // Bank 1 goes in the spare instruction RAM when there's room (about 40 KB that nothing else
+  // can use, since it only takes whole 32-bit words; the emulator only ever uses whole words),
+  // which leaves 32 KB more ordinary RAM for Wi-Fi and the web page.
   uint8_t* banks[RAM_BANKS] = {};
   bool banksOk = true;
+  banks[1] = (uint8_t*)heap_caps_malloc(RAM_BANK_SIZE, MALLOC_CAP_EXEC | MALLOC_CAP_32BIT);
+  Serial.printf("Mac RAM bank in instruction RAM: %s (IRAM free %u)\n", banks[1] ? "yes" : "no",
+                (unsigned)heap_caps_get_free_size(MALLOC_CAP_EXEC));
   for (int i = 0; i < RAM_BANKS; i++) {
-    banks[i] = (uint8_t*)heap_caps_malloc(RAM_BANK_SIZE, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (!banks[i]) banks[i] = (uint8_t*)heap_caps_malloc(RAM_BANK_SIZE, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     banksOk = banksOk && banks[i];
   }
   Serial.printf("Mac RAM set aside: %s, free now %u (largest piece %u)\n", banksOk ? "yes" : "NO",
                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
   if (banksOk) mac.setFixedBanks(banks);
-  else for (uint8_t* b : banks) free(b);
+  else for (uint8_t* b : banks) heap_caps_free(b);
 #endif
   pinMode(PIN_LED, OUTPUT);
   pinMode(PIN_BUTTON, INPUT_PULLUP);
@@ -756,11 +762,11 @@ void setup() {
   size_t freeH = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 #endif
-#ifdef BOARD_ESP32
-  // the block set aside at the start counts as free for the Mac
-  freeH += 128 * 1024; if (largest < 128 * 1024) largest = 128 * 1024;
-#endif
   Serial.printf("Heap before Mac: free %u, largest block %u\n", (unsigned)freeH, (unsigned)largest);
+#ifdef BOARD_ESP32
+  // the Mac's RAM was set aside at the start, so it always fits
+  freeH += 128 * 1024 + RUN_RESERVE; if (largest < 128 * 1024) largest = 128 * 1024;
+#endif
   if (safeMode) {
     startError = "The board crashed 3 times in a row starting the Mac. Pick a smaller Mac RAM below and click Apply.";
     Serial.println("Safe mode: Mac not started");

@@ -65,8 +65,17 @@ static const uint8_t sony_driver[] = {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#ifdef UMAC_RAM_SPLIT
+static uint8_t *rom_bank[RAM_BANKS];
+#endif
+
 static uint32_t rom_get_version(uint8_t *rom_base)
 {
+#ifdef UMAC_RAM_SPLIT
+        /* while patching, the ROM is in the RAM banks, which want whole 32-bit reads */
+        if (rom_bank[0] == rom_base)
+                return __builtin_bswap32(*(volatile uint32_t *)rom_base);
+#endif
 #if BYTE_ORDER == LITTLE_ENDIAN
         return __builtin_bswap32(*(uint32_t *)rom_base);
 #else
@@ -76,32 +85,47 @@ static uint32_t rom_get_version(uint8_t *rom_base)
 
 /* Not perf-critical, so open-coding to support BE _and_ unaligned access */
 /* Heltec-Mac: with split RAM (plain ESP32, see machw.h) the ROM is patched in the RAM's
- * banks, which aren't next to each other, so every byte goes through RB(). */
+ * banks, which aren't next to each other, so every byte goes through rb_rd()/rb_wr(). */
 #ifdef UMAC_RAM_SPLIT
-static uint8_t *rom_bank[RAM_BANKS];
-#define RB(offset)      (rom_bank[((offset) >> RAM_BANK_SHIFT) & (RAM_BANKS - 1)][(offset) & RAM_BANK_MASK])
+/* the banks may be word-only RAM (machw.h), so whole 32-bit words here too */
+static inline volatile uint32_t *rb_w(unsigned int o)
+{
+        return (volatile uint32_t *)(rom_bank[(o >> RAM_BANK_SHIFT) & (RAM_BANKS - 1)] + (o & RAM_BANK_MASK & ~3u));
+}
+static inline unsigned int rb_rd(uint8_t *rom_base, unsigned int o)
+{
+        (void)rom_base;
+        return (*rb_w(o) >> ((o & 3) * 8)) & 0xff;
+}
+static inline void rb_wr(uint8_t *rom_base, unsigned int o, unsigned int v)
+{
+        (void)rom_base;
+        volatile uint32_t *p = rb_w(o);
+        unsigned s = (o & 3) * 8;
+        *p = (*p & ~(0xffu << s)) | ((v & 0xff) << s);
+}
 #else
-#define RB(offset)      (rom_base[(offset)])
+static inline unsigned int rb_rd(uint8_t *rom_base, unsigned int o) { return rom_base[o]; }
+static inline void rb_wr(uint8_t *rom_base, unsigned int o, unsigned int v) { rom_base[o] = v; }
 #endif
 static void     rom_copy_in(uint8_t *rom_base, unsigned int offset, const uint8_t *src, unsigned int len)
 {
-        (void)rom_base;
         for (unsigned int i = 0; i < len; i++)
-                RB(offset + i) = src[i];
+                rb_wr(rom_base, offset + i, src[i]);
 }
 
 #define ROM_WR32(offset, data) do {                                     \
-                RB((offset)+0) = ((data) >> 24) & 0xff;                 \
-                RB((offset)+1) = ((data) >> 16) & 0xff;                 \
-                RB((offset)+2) = ((data) >> 8) & 0xff;                  \
-                RB((offset)+3) = (data) & 0xff;                         \
+                rb_wr(rom_base, (offset)+0, ((data) >> 24) & 0xff);     \
+                rb_wr(rom_base, (offset)+1, ((data) >> 16) & 0xff);     \
+                rb_wr(rom_base, (offset)+2, ((data) >> 8) & 0xff);      \
+                rb_wr(rom_base, (offset)+3, (data) & 0xff);             \
         } while (0)
 #define ROM_WR16(offset, data) do {                             \
-                RB((offset)+0) = ((data) >> 8) & 0xff;          \
-                RB((offset)+1) = (data) & 0xff;                 \
+                rb_wr(rom_base, (offset)+0, ((data) >> 8) & 0xff); \
+                rb_wr(rom_base, (offset)+1, (data) & 0xff);     \
         } while (0)
 #define ROM_WR8(offset, data) do {                              \
-                RB((offset)+0) = (data) & 0xff;                 \
+                rb_wr(rom_base, (offset)+0, (data) & 0xff);     \
         } while (0)
 
 
@@ -268,7 +292,7 @@ static void     rom_patch_128k(uint8_t *rom_base)
          * 16-bit words after the 4-byte checksum field). */
         uint32_t sum = 0;
         for (int i = 4; i < ROM_128K_SIZE; i += 2)
-                sum += (RB(i) << 8) | RB(i + 1);
+                sum += (rb_rd(rom_base, i) << 8) | rb_rd(rom_base, i + 1);
         ROM_WR32(0, sum);
 
         /* Mirror across the window, like the real 64 KB ROM in its 128 KB window */
@@ -280,7 +304,7 @@ static void     rom_mirror(uint8_t *rom_base, unsigned int len)
 {
         for (unsigned int o = len; o + len <= ROM_SIZE; o += len)
                 for (unsigned int i = 0; i < len; i++)
-                        RB(o + i) = RB(i);
+                        rb_wr(rom_base, o + i, rb_rd(rom_base, i));
 }
 
 #if ROM_SIZE >= 0x40000

@@ -197,14 +197,24 @@ void MacMachine::saveMeta() {
 // buffer, so no extra memory is needed.
 bool MacMachine::patchRom(uint32_t ramBytes, uint8_t* ramBuf) {
 #ifdef UMAC_RAM_SPLIT
-  // the ROM goes through the Mac's RAM banks (4 x 32 KB = the 128 KB ROM window)
+  // the ROM goes through the Mac's RAM banks (4 x 32 KB = the 128 KB ROM window), in whole
+  // 32-bit words via a small buffer, since a bank may be word-only RAM (machw.h)
   (void)ramBuf;
   bool ok2 = true;
-  for (int i = 0; i < RAM_BANKS; i++) ok2 = ok2 && romArea->read(ROM_AREA_ORIG + i * RAM_BANK_SIZE, bank[i], RAM_BANK_SIZE);
+  uint32_t tmp[128];
+  for (uint32_t o = 0; ok2 && o < MAC_ROM_SIZE; o += sizeof tmp) {
+    ok2 = romArea->read(ROM_AREA_ORIG + o, (uint8_t*)tmp, sizeof tmp);
+    volatile uint32_t* w = (volatile uint32_t*)(bank[o / RAM_BANK_SIZE] + o % RAM_BANK_SIZE);
+    for (int j = 0; j < 128; j++) w[j] = tmp[j];
+  }
   umac_ram_size = ramBytes;
   ok2 = ok2 && rom_patch_banks(bank) == 0;
   ok2 = ok2 && romArea->erase(ROM_AREA_PATCHED, MAC_ROM_SIZE);
-  for (int i = 0; i < RAM_BANKS; i++) ok2 = ok2 && romArea->write(ROM_AREA_PATCHED + i * RAM_BANK_SIZE, bank[i], RAM_BANK_SIZE);
+  for (uint32_t o = 0; ok2 && o < MAC_ROM_SIZE; o += sizeof tmp) {
+    volatile uint32_t* w = (volatile uint32_t*)(bank[o / RAM_BANK_SIZE] + o % RAM_BANK_SIZE);
+    for (int j = 0; j < 128; j++) tmp[j] = w[j];
+    ok2 = romArea->write(ROM_AREA_PATCHED + o, (uint8_t*)tmp, sizeof tmp);
+  }
   if (ok2) { m.patchedRam = ramBytes; saveMeta(); }
   return ok2;
 #endif
@@ -363,7 +373,10 @@ const uint8_t* MacMachine::framebuffer() const {
 
 void MacMachine::clearRam() {
 #ifdef UMAC_RAM_SPLIT
-  for (int i = 0; i < RAM_BANKS; i++) memset(bank[i], 0, RAM_BANK_SIZE);
+  for (int i = 0; i < RAM_BANKS; i++) {   // whole words: a bank may be word-only RAM (machw.h)
+    volatile uint32_t* w = (volatile uint32_t*)bank[i];
+    for (uint32_t j = 0; j < RAM_BANK_SIZE / 4; j++) w[j] = 0;
+  }
 #else
   memset(ram, 0, ramSize);
 #endif
