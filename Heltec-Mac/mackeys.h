@@ -4,6 +4,7 @@
 //   arrows and the numeric keypad use the Mac Plus keypad codes.
 #pragma once
 #include <stdint.h>
+#include "heltec_config.h"
 
 class MacKeys {
  public:
@@ -15,12 +16,20 @@ class MacKeys {
 
  private:
   struct Ev { uint32_t sym; uint8_t down; };
+#ifdef BOARD_ESP32
+  static const int QN = 64;                 // a plain ESP32 is short of memory
+#else
   static const int QN = 256;
+#endif
   Ev q[QN];
   volatile int qHead = 0, qTail = 0;
   volatile bool releaseReq = false;
 
+#ifdef BOARD_ESP32
+  static const int TN = 512;
+#else
   static const int TN = 2048;
+#endif
   char text[TN];
   volatile int tHead = 0, tTail = 0;
 

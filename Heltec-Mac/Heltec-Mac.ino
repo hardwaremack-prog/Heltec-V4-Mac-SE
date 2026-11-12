@@ -324,6 +324,7 @@ struct WifiConn : VncConn {
 };
 
 // ---------------- emulator task (core 1)
+static TaskHandle_t emuTaskHandle = nullptr;
 static void emuTask(void*) {
   while (!macReady) vTaskDelay(20);
   while (holdMac) {
@@ -593,9 +594,19 @@ static void netTask(void*) {
   uint32_t lastOled = 0, lastSpeed = millis(), lastLoops = mac.loops;
   uint32_t btnDown = 0;
   bool btnHeld = false, cleanMarked = false;
-  uint32_t lastNtp = 0;
+  uint32_t lastNtp = 0, lastMem = 0;
   for (;;) {
     if (apMode) dnsPoll();
+    // every 10 s on the serial port: memory (the lowest it has been) and how much of each task's
+    // stack was never used, to see what's tight
+    if (millis() - lastMem > 10000) {
+      lastMem = millis();
+      Serial.printf("[mem] free %u, lowest %u, largest piece %u; stack spare: net %u, mac %u\n",
+                    (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                    (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                    (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                    (unsigned)uxTaskGetStackHighWaterMark(nullptr), (unsigned)(emuTaskHandle ? uxTaskGetStackHighWaterMark(emuTaskHandle) : 0));
+    }
     // internet time: once it arrives, and every 6 hours (only if we know your time zone)
     if (!apMode && mac.timezoneKnown() && (!lastNtp || millis() - lastNtp > 6UL * 3600 * 1000) && (millis() & 0x3FF) < 2) {
       time_t utc = time(nullptr);
@@ -687,6 +698,20 @@ void setup() {
   oled.begin();
   oled.clear(); { char t[22]; snprintf(t, sizeof t, "%-21s", BOARD_OLED); oled.text(0, 0, t, true); } oled.text(0, 3, "JOINING WIFI..."); oled.show();
 
+#ifdef BOARD_ESP32
+  // Start Wi-Fi with fewer buffers than usual (a plain ESP32 is short of memory with the Mac in
+  // it), before the WiFi library does it its own way: it then finds Wi-Fi already set up.
+  {
+    Network.begin();
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    cfg.static_tx_buf_num = 0; cfg.tx_buf_type = 1; cfg.dynamic_tx_buf_num = 16; cfg.cache_tx_buf_num = 4;
+    cfg.static_rx_buf_num = 4; cfg.dynamic_rx_buf_num = 10;
+    cfg.ampdu_rx_enable = 0; cfg.ampdu_tx_enable = 0;   // no big block-ack buffers
+    cfg.mgmt_sbuf_num = 10;
+    esp_err_t e = esp_wifi_init(&cfg);
+    Serial.printf("Wi-Fi set up small: %s, free %u\n", e == ESP_OK ? "yes" : esp_err_to_name(e), (unsigned)ESP.getFreeHeap());
+  }
+#endif
   // Wi-Fi: saved network, else hotspot
   String ssid = prefs.getString("ssid", ""), pass = prefs.getString("pass", "");
   WiFi.setHostname(HOSTNAME);
@@ -747,7 +772,7 @@ void setup() {
   wsListener.begin(); wsListener.setNoDelay(true);
   setupWeb();
 
-  xTaskCreatePinnedToCore(emuTask, "mac", 8192, nullptr, 1, nullptr, 1);
+  xTaskCreatePinnedToCore(emuTask, "mac", 8192, nullptr, 1, &emuTaskHandle, 1);
   xTaskCreatePinnedToCore(netTask, "net", 12288, nullptr, 2, nullptr, 0);
 
   // Now the Mac gets what's left, after Wi-Fi, the servers and the tasks have taken their share.

@@ -112,7 +112,11 @@ class MacMachine {
   volatile uint32_t loops = 0;   // ~5 ms Mac-time slices run (for the speed readout)
 
   // Sound: one entry per Mac video frame. byte 0 = volume (0-7) or 0xFF = silent, then 370 samples
+#ifdef BOARD_ESP32
+  static const int AUDIO_FRAMES = 8, AUDIO_BYTES = 371;    // a plain ESP32 is short of memory
+#else
   static const int AUDIO_FRAMES = 12, AUDIO_BYTES = 371;
+#endif
   volatile bool audioWanted = false;              // a browser has sound turned on
   bool popAudio(uint8_t out[AUDIO_BYTES]);        // network thread
   int audioQueued() const { return (aHead - aTail + AUDIO_FRAMES) % AUDIO_FRAMES; }
