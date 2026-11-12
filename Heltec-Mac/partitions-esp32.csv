@@ -1,0 +1,7 @@
+# Name,   Type, SubType,  Offset,   Size
+# A plain ESP32 dev board with 4 MB of flash: 1.6 MB app, ROM area, ~2 MB of disks.
+nvs,      data, nvs,      0x9000,   0x5000,
+otadata,  data, ota,      0xe000,   0x2000,
+app0,     app,  ota_0,    0x10000,  0x1A0000,
+macrom,   data, 0x40,     0x1B0000, 0x48000,
+macdisk,  data, 0x41,     0x1F8000, 0x208000,

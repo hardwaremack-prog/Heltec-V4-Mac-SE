@@ -24,6 +24,11 @@
 #include <lwip/sockets.h>
 #include <errno.h>
 #include "heltec_config.h"
+#ifdef UMAC_RAM_SPLIT
+extern "C" {
+#include "src/core/machw.h"   // RAM_BANKS, RAM_BANK_SIZE
+}
+#endif
 #include "macmachine.h"
 #include "mackeys.h"
 #include "macvnc.h"
@@ -33,13 +38,26 @@
 #include "macfiles_js.h"
 #include "oledfont.h"
 
-// ---------------- Heltec V3 pins
+#ifdef BOARD_ESP32
+// ---------------- plain ESP32 dev board (NodeMCU-32S / DevKitC): no screen or battery built in.
+// An SSD1306 128x64 screen on GPIO 21 (SDA) / 22 (SCL) is used if one is found.
+#define PIN_VEXT -1
+#define PIN_OLED_RST -1
+#define PIN_OLED_SDA 21
+#define PIN_OLED_SCL 22
+#define PIN_LED 2        // the blue LED on most ESP32 dev boards
+#define PIN_BUTTON 0     // BOOT button
+#define HAS_BATTERY 0
+#else
+// ---------------- Heltec V3 / V4 pins
 #define PIN_VEXT 36      // LOW = power to OLED
 #define PIN_OLED_RST 21
 #define PIN_OLED_SDA 17
 #define PIN_OLED_SCL 18
 #define PIN_LED 35
 #define PIN_BUTTON 0     // PRG button
+#define HAS_BATTERY 1
+#endif
 
 static const char* AP_SSID = BOARD_AP_SSID;
 static const char* AP_PASS = "heltecmac";
@@ -137,10 +155,11 @@ struct Oled {
   bool ok = false;
   void cmd(uint8_t c) { Wire.beginTransmission(0x3C); Wire.write(0x00); Wire.write(c); Wire.endTransmission(); }
   void begin() {
-    pinMode(PIN_VEXT, OUTPUT); digitalWrite(PIN_VEXT, LOW);
-    delay(50);
-    pinMode(PIN_OLED_RST, OUTPUT);
-    digitalWrite(PIN_OLED_RST, LOW); delay(20); digitalWrite(PIN_OLED_RST, HIGH); delay(20);
+    if (PIN_VEXT >= 0) { pinMode(PIN_VEXT, OUTPUT); digitalWrite(PIN_VEXT, LOW); delay(50); }
+    if (PIN_OLED_RST >= 0) {
+      pinMode(PIN_OLED_RST, OUTPUT);
+      digitalWrite(PIN_OLED_RST, LOW); delay(20); digitalWrite(PIN_OLED_RST, HIGH); delay(20);
+    }
     Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL, 400000);
     Wire.beginTransmission(0x3C);
     ok = Wire.endTransmission() == 0;
@@ -195,6 +214,7 @@ static const char* stateText() {
 static int batMv = -1;           // -1 = not read yet, 0 = no battery
 static uint8_t adcOn = LOW; static bool adcTried = false;
 static int readBatteryOnce() {
+  if (!HAS_BATTERY) return 0;
   pinMode(PIN_ADC_CTRL, OUTPUT); digitalWrite(PIN_ADC_CTRL, adcOn);
   delay(5);
   uint32_t sum = 0;
@@ -203,6 +223,7 @@ static int readBatteryOnce() {
   return (int)(sum / 16 * 4.9f * 1.045f);
 }
 static void readBattery() {
+  if (!HAS_BATTERY) { batMv = -1; return; }
   int mv = readBatteryOnce();
   if (mv < 1000 && !adcTried) { adcTried = true; adcOn = !adcOn; mv = readBatteryOnce(); if (mv < 1000) adcOn = !adcOn; }
   if (mv < 2700) mv = 0;   // nothing (or a dead cell) on the battery connector
@@ -349,7 +370,7 @@ static void goToSleep() {
   oled.clear(); oled.text(0, 2, "     SLEEPING...     "); oled.text(0, 4, " PRESS PRG TO WAKE"); oled.show();
   delay(1500);
   if (oled.ok) { oled.cmd(0x8D); oled.cmd(0x10); oled.cmd(0xAE); }   // charge pump off, display off
-  digitalWrite(PIN_VEXT, HIGH);                                         // cut power to the OLED
+  if (PIN_VEXT >= 0) digitalWrite(PIN_VEXT, HIGH);                      // cut power to the OLED
   analogWrite(PIN_LED, 0);
   WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
   while (digitalRead(PIN_BUTTON) == LOW) delay(10);   // don't wake straight away if PRG is held
@@ -625,6 +646,23 @@ static void netTask(void*) {
 // ---------------- setup
 void setup() {
   Serial.begin(115200);
+#ifdef BOARD_ESP32
+  // A plain ESP32's free memory comes in several pieces, none of them 128 KB, so the Mac's RAM
+  // is four 32 KB banks (see machw.h). Set them aside now, before Wi-Fi takes its share.
+  Serial.printf("Free %u, largest piece %u\n", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  uint8_t* banks[RAM_BANKS] = {};
+  bool banksOk = true;
+  for (int i = 0; i < RAM_BANKS; i++) {
+    banks[i] = (uint8_t*)heap_caps_malloc(RAM_BANK_SIZE, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    banksOk = banksOk && banks[i];
+  }
+  Serial.printf("Mac RAM set aside: %s, free now %u (largest piece %u)\n", banksOk ? "yes" : "NO",
+                (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (banksOk) mac.setFixedBanks(banks);
+  else for (uint8_t* b : banks) free(b);
+#endif
   pinMode(PIN_LED, OUTPUT);
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   prefs.begin("macmesh", false);
@@ -717,6 +755,10 @@ void setup() {
 #else
   size_t freeH = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+#endif
+#ifdef BOARD_ESP32
+  // the block set aside at the start counts as free for the Mac
+  freeH += 128 * 1024; if (largest < 128 * 1024) largest = 128 * 1024;
 #endif
   Serial.printf("Heap before Mac: free %u, largest block %u\n", (unsigned)freeH, (unsigned)largest);
   if (safeMode) {

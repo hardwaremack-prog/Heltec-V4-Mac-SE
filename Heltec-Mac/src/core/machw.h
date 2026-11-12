@@ -64,6 +64,41 @@ static inline uint8_t *ram_get_base(void)
         return _ram_base;
 }
 
+#ifdef UMAC_RAM_SPLIT
+/* Heltec-Mac on a plain ESP32: the Mac's 128 KB of RAM is four 32 KB banks wherever they
+ * fit (bank = address bits 15-16), because that chip's free memory is in pieces and none is
+ * 128 KB.  Words at even addresses never straddle two banks; longs and odd words might, so
+ * they go in halves.  The screen and sound buffers sit inside the top bank. */
+#define RAM_BANK_SHIFT  15
+#define RAM_BANK_SIZE   (1u << RAM_BANK_SHIFT)
+#define RAM_BANK_MASK   (RAM_BANK_SIZE - 1)
+#define RAM_BANKS       4
+extern uint8_t *_ram_bank[RAM_BANKS];
+static inline uint8_t *ram_ptr(uint32_t a)
+{
+        return _ram_bank[(a >> RAM_BANK_SHIFT) & (RAM_BANKS - 1)] + (a & RAM_BANK_MASK);
+}
+static inline uint32_t ram_rd16(uint32_t a)
+{
+        uint8_t *p = ram_ptr(a);
+        if ((a & RAM_BANK_MASK) != RAM_BANK_MASK)
+                return (p[0] << 8) | p[1];
+        return (p[0] << 8) | *ram_ptr(a + 1);
+}
+static inline void ram_wr16(uint32_t a, uint32_t v)
+{
+        uint8_t *p = ram_ptr(a);
+        p[0] = (v >> 8) & 0xff;
+        if ((a & RAM_BANK_MASK) != RAM_BANK_MASK) p[1] = v & 0xff;
+        else *ram_ptr(a + 1) = v & 0xff;
+}
+#else
+static inline uint8_t *ram_ptr(uint32_t a)
+{
+        return _ram_base + a;
+}
+#endif
+
 static inline uint8_t *rom_get_base(void)
 {
         return _rom_base;
@@ -131,6 +166,17 @@ extern int overlay;
 
 /* Specific RAM/ROM access: */
 
+#ifdef UMAC_RAM_SPLIT
+#define RAM_RD8(addr)                   (*ram_ptr(addr))
+#define RAM_RD16(addr)                  ram_rd16(addr)
+#define RAM_RD_ALIGNED_BE16(addr)       (__builtin_bswap16(*(uint16_t *)ram_ptr(addr)))
+#define RAM_RD32(addr)                  ((ram_rd16(addr) << 16) | ram_rd16((addr) + 2))
+
+#define RAM_WR8(addr, val)              do { *ram_ptr(addr) = (val) & 0xff; } while (0)
+#define RAM_WR16(addr, val)             ram_wr16(addr, val)
+#define RAM_WR32(addr, val)             do { uint32_t a_ = (addr), v_ = (val); \
+                ram_wr16(a_, v_ >> 16); ram_wr16(a_ + 2, v_ & 0xffff); } while (0)
+#else
 #define RAM_RD8(addr)                   READ_BYTE(_ram_base, addr)
 #define RAM_RD16(addr)                  READ_WORD(_ram_base, addr)
 #define RAM_RD_ALIGNED_BE16(addr)       READ_WORD_AL(_ram_base, addr)
@@ -139,6 +185,7 @@ extern int overlay;
 #define RAM_WR8(addr, val)              WRITE_BYTE(_ram_base, addr, val)
 #define RAM_WR16(addr, val)             WRITE_WORD(_ram_base, addr, val)
 #define RAM_WR32(addr, val)             WRITE_LONG(_ram_base, addr, val)
+#endif
 
 #define ROM_RD8(addr)                   READ_BYTE(_rom_base, addr)
 #define ROM_RD16(addr)                  READ_WORD(_rom_base, addr)

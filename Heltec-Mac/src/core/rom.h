@@ -38,6 +38,9 @@
 #include <inttypes.h>
 
 int      rom_patch(uint8_t *rom_base);
+#ifdef UMAC_RAM_SPLIT
+int      rom_patch_banks(uint8_t *const banks[]);   /* the ROM in the split RAM's banks (machw.h) */
+#endif
 int      rom_is_se(const uint8_t *rom_base);   /* 1 for the Mac SE / SE FDHD ROMs */
 
 #endif

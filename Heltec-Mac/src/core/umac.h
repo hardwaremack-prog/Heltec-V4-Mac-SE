@@ -30,6 +30,10 @@
 #include "machw.h"
 
 int     umac_init(void *_ram_base, void *_rom_base, disc_descr_t discs[DISC_NUM_DRIVES]);
+#ifdef UMAC_RAM_SPLIT
+/* Split RAM (see machw.h): call before umac_init(), which then ignores its RAM argument */
+void    umac_set_ram_banks(uint8_t *const banks[RAM_BANKS]);
+#endif
 int     umac_loop(void);
 void    umac_reset(void);
 void    umac_opt_disassemble(int enable);

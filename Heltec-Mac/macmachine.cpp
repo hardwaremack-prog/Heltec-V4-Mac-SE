@@ -196,6 +196,18 @@ void MacMachine::saveMeta() {
 // Patches the ROM for this RAM size, using the (not yet started) Mac RAM as the 128 KB work
 // buffer, so no extra memory is needed.
 bool MacMachine::patchRom(uint32_t ramBytes, uint8_t* ramBuf) {
+#ifdef UMAC_RAM_SPLIT
+  // the ROM goes through the Mac's RAM banks (4 x 32 KB = the 128 KB ROM window)
+  (void)ramBuf;
+  bool ok2 = true;
+  for (int i = 0; i < RAM_BANKS; i++) ok2 = ok2 && romArea->read(ROM_AREA_ORIG + i * RAM_BANK_SIZE, bank[i], RAM_BANK_SIZE);
+  umac_ram_size = ramBytes;
+  ok2 = ok2 && rom_patch_banks(bank) == 0;
+  ok2 = ok2 && romArea->erase(ROM_AREA_PATCHED, MAC_ROM_SIZE);
+  for (int i = 0; i < RAM_BANKS; i++) ok2 = ok2 && romArea->write(ROM_AREA_PATCHED + i * RAM_BANK_SIZE, bank[i], RAM_BANK_SIZE);
+  if (ok2) { m.patchedRam = ramBytes; saveMeta(); }
+  return ok2;
+#endif
   // patch in the Mac's RAM buffer when it's big enough (saves memory), else borrow some
   uint8_t* buf = ramBytes >= MAC_ROM_SIZE ? ramBuf : (uint8_t*)malloc(MAC_ROM_SIZE);
   if (!buf) return false;
@@ -239,22 +251,41 @@ bool MacMachine::start(size_t freeBytes, size_t largest, size_t reserve, std::st
   uint32_t bytes = pick * 1024;
 
   if (isSeRom(m.romChecksum) && pick < 1024) { why = "The Mac SE needs 1 MB of RAM, and there isn't room for it."; return false; }
+#ifdef UMAC_RAM_SPLIT
+  // Four 32 KB banks (see machw.h): always a 128K Mac
+  pick = 128; bytes = 128 * 1024;
+  auto freeRam = [this]() {
+    for (int i = 0; i < RAM_BANKS; i++) { if (bank[i] && bank[i] != fixedBank[i]) free(bank[i]); bank[i] = nullptr; }
+    ram = nullptr;
+  };
+  bool ok = true;
+  for (int i = 0; i < RAM_BANKS; i++) {
+    bank[i] = fixedBank[i] ? fixedBank[i] : (uint8_t*)malloc(RAM_BANK_SIZE);
+    ok = ok && bank[i];
+  }
+  ram = bank[0];
+  if (!ok) { freeRam(); why = "RAM allocation failed."; return false; }
+  umac_set_ram_banks(bank);
+#else
+  auto freeRam = [this]() { if (ram && ram != fixedRam) free(ram); ram = nullptr; };
+  ram = nullptr;
+  if (fixedRam && bytes <= fixedSize) ram = fixedRam;
 #if defined(ARDUINO) && defined(HELTEC_V4)
-  ram = (uint8_t*)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);   // the V4's PSRAM
-  if (!ram)
+  if (!ram) ram = (uint8_t*)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);   // the V4's PSRAM
 #endif
-  ram = (uint8_t*)malloc(bytes);
+  if (!ram) ram = (uint8_t*)malloc(bytes);
   if (!ram) { why = "RAM allocation failed."; return false; }
+#endif
   if (m.patchedRam != bytes && !patchRom(bytes, ram)) {
-    free(ram); ram = nullptr;
+    freeRam();
     why = "Couldn't prepare the ROM (bad ROM?) - upload it again.";
     return false;
   }
   umac_ram_size = bytes;
   rom = romArea->map(ROM_AREA_PATCHED, MAC_ROM_SIZE);
-  if (!rom) { free(ram); ram = nullptr; why = "Couldn't map the ROM."; return false; }
-  memset(ram, 0, bytes);
+  if (!rom) { freeRam(); why = "Couldn't map the ROM."; return false; }
   ramSize = bytes;
+  clearRam();
   if (m.lastRamKB != pick) { m.lastRamKB = pick; saveMeta(); }
   if (!secBuf) secBuf = (uint8_t*)malloc(SECTOR);
 
@@ -291,6 +322,9 @@ bool MacMachine::startTest(const uint8_t* testRom, uint32_t bytes) {
   rom = testRom;
   ram = (uint8_t*)calloc(1, bytes);
   ramSize = bytes;
+#ifdef UMAC_RAM_SPLIT
+  { uint8_t* b[RAM_BANKS]; for (int i = 0; i < RAM_BANKS; i++) b[i] = ram + (i * RAM_BANK_SIZE) % bytes; umac_set_ram_banks(b); }
+#endif
   if (!secBuf) secBuf = (uint8_t*)malloc(SECTOR);
   disc_descr_t discs[DISC_NUM_DRIVES];
   memset(discs, 0, sizeof discs);
@@ -306,7 +340,7 @@ void MacMachine::reset() {
   // Like switching the Mac off and on: clear its memory and set up all of its chips again (not
   // just the processor), so nothing from the last disk lingers. The clock keeps running.
   if (ram) {
-    memset(ram, 0, ramSize);
+    clearRam();
     disc_descr_t discs[DISC_NUM_DRIVES];
     memset(discs, 0, sizeof discs);
     discs[0].size = m.diskSize;
@@ -324,7 +358,15 @@ void MacMachine::reset() {
 bool MacMachine::crashed() const { return ram && umac_crashed(); }
 
 const uint8_t* MacMachine::framebuffer() const {
-  return ram ? ram + umac_get_fb_offset() : nullptr;
+  return ram ? ram_ptr(umac_get_fb_offset()) : nullptr;   // the screen never straddles split RAM's banks
+}
+
+void MacMachine::clearRam() {
+#ifdef UMAC_RAM_SPLIT
+  for (int i = 0; i < RAM_BANKS; i++) memset(bank[i], 0, RAM_BANK_SIZE);
+#else
+  memset(ram, 0, ramSize);
+#endif
 }
 
 void MacMachine::captureAudio() {
@@ -391,7 +433,11 @@ int64_t MacMachine::step(int64_t now) {
 // ------------------------------------------------------------------ uploads
 void MacMachine::stop() {
   flushDisk();
-  if (ram) { free(ram); ram = nullptr; ramSize = 0; }
+  if (ram) { if (ram != fixedRam) free(ram); ram = nullptr; ramSize = 0; }
+#ifdef UMAC_RAM_SPLIT
+  for (int i = 1; i < RAM_BANKS; i++) { if (bank[i] && bank[i] != fixedBank[i]) free(bank[i]); bank[i] = nullptr; }
+  bank[0] = nullptr;
+#endif
   if (rom) { romArea->unmap(); rom = nullptr; }
 }
 

@@ -1,10 +1,12 @@
 #!/bin/sh
 # Builds the PC test harness (Linux/macOS): ./build.sh && ./machost --testrom
 #   V4=1 ./build.sh   builds machost-v4: the Heltec V4 variant (256 KB ROMs incl. the Mac SE)
+#   ESP32=1 ./build.sh builds machost-esp32: the plain ESP32 variant (RAM in two 64 KB banks)
 set -e
 C=../Heltec-Mac/src/core
 DEF=""; OUT=machost; OBJ=obj
 if [ -n "$V4" ]; then DEF="-DHELTEC_V4"; OUT=machost-v4; OBJ=obj-v4; fi
+if [ -n "$ESP32" ]; then DEF="-DUMAC_RAM_SPLIT"; OUT=machost-esp32; OBJ=obj-esp32; fi
 mkdir -p $OBJ
 for f in umac_main via scc disc rom adb m68kcpu m68kops m68kdasm; do
   gcc -O2 -w -DMACMESH_HOST $DEF $EXTRA -I$C -c $C/$f.c -o $OBJ/$f.o

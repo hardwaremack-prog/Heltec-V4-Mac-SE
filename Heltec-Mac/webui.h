@@ -6,10 +6,28 @@
 #define ROM_HELP "Your own ROM: the Mac SE FDHD ROM (256 KB, checksum B306E171) or Mac SE ROM (B2E362A8) makes this a 1 MB Mac SE with an ADB keyboard and mouse, running System 4 to 6 from 800K and 1.44 MB disks. The Mac Plus v3 (4D1F8172) and Mac 128K/512K (28BA61CE) ROMs work too. ROMs aren't included."
 #define RAM_OPTIONS "<option>1024</option><option>512</option><option>256</option><option>128</option>"
 #define DISK_HINT "With the SE ROM, use System 4.1 to 6.0.8 disks: 800K or 1.44 MB HFS (or 400K MFS with System 3.2 or later)."
+#elif defined(BOARD_ESP32)
+#define ROM_HELP "Your own ROM: the original Mac 128K/512K ROM (64 KB, checksum 28BA61CE), best on this 128K Mac with room for MacPaint 1.x, or the Mac Plus v3 ROM (128 KB, checksum 4D1F8172). ROMs aren't included."
+#define RAM_OPTIONS "<option>128</option>"
+#define DISK_HINT "Early 400K disks (System 1&ndash;3) fit this Mac best."
 #else
 #define ROM_HELP "Your own ROM: the Mac Plus v3 ROM (128 KB, checksum 4D1F8172), or the original Mac 128K/512K ROM (64 KB, checksum 28BA61CE), which leaves more room for apps like MacPaint 1.x on this 128K Mac. ROMs aren't included."
 #define RAM_OPTIONS "<option>256</option><option>128</option>"
 #define DISK_HINT "Early 400K disks (System 1&ndash;3) fit this Mac best."
+#endif
+#ifdef BOARD_ESP32
+#define RAM_NOTE "A plain ESP32 runs a 128K Mac (a real Mac 128K): its memory comes in pieces, so the Mac's 128 KB is set aside in four parts when the board starts. With the Mac 128K ROM it runs 1984 software like MacPaint and MacWrite."
+#else
+#define RAM_NOTE "On the Heltec V3, 128 KB is what fits next to Wi-Fi (a real Mac 128K). 256 KB is used only if there's room. With the Mac 128K ROM, 128 KB runs 1984 software like MacPaint and MacWrite."
+#endif
+#ifdef BOARD_ESP32
+#define BTN_WAKE "BOOT (or EN)"
+#define BOARD_KIND "ESP32 board"
+#define BOARD_RST_TIP "like pressing EN"
+#else
+#define BTN_WAKE "PRG (or RST)"
+#define BOARD_KIND "Heltec board"
+#define BOARD_RST_TIP "like pressing RST"
 #endif
 static const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -57,8 +75,8 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
   <button id="bFull">Full screen</button>
   <button id="bReset">Restart Mac</button>
   <button id="bNoDisk" title="Takes the disk out and restarts the Mac with an empty drive. Pick a disk under Disks to start from it again.">No disk</button>
-  <button id="bReboot" title="Restarts the whole Heltec board, like pressing RST. The disk is saved first.">Restart board</button>
-  <button id="bSleep" title="Puts the Heltec board into deep sleep. Press PRG (or RST) on the board to wake it.">Sleep board</button>
+  <button id="bReboot" title="Restarts the whole )HTML" BOARD_KIND R"HTML(, )HTML" BOARD_RST_TIP R"HTML(. The disk is saved first.">Restart board</button>
+  <button id="bSleep" title="Puts the )HTML" BOARD_KIND R"HTML( into deep sleep. Press )HTML" BTN_WAKE R"HTML( on the board to wake it.">Sleep board</button>
  </div>
  <div class="hint">Click the screen to type. Ctrl or Windows key = Command, Alt = Option. Browsers keep Ctrl+W/T/N for themselves, so use the &#8984; button for those.</div>
  <div id="prn" aria-live="polite"></div>
@@ -86,7 +104,7 @@ textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monosp
 </section>
 <section><h2>Machine</h2>
  <label>Mac RAM <select id="ram"><option value="0">Auto (biggest that fits)</option>)HTML" RAM_OPTIONS R"HTML(</select></label>
- <p class="mute">On the Heltec V3, 128 KB is what fits next to Wi-Fi (a real Mac 128K). 256 KB is used only if there's room. With the Mac 128K ROM, 128 KB runs 1984 software like MacPaint and MacWrite.</p>
+ <p class="mute">)HTML" RAM_NOTE R"HTML(</p>
  <div class="bar" style="justify-content:flex-start"><button id="ramSet">Apply (restarts the board)</button><button id="turbo">Turbo: off</button></div>
 </section>
 <section><h2>Type into the Mac</h2>
@@ -277,10 +295,10 @@ $('bSize').onclick=()=>{sizeMode={auto:'sharp',sharp:'fill',fill:'auto'}[sizeMod
 window.addEventListener('resize',fitScreen);document.addEventListener('fullscreenchange',fitScreen);
 (window.matchMedia?matchMedia('(resolution: '+(window.devicePixelRatio||1)+'dppx)'):null)?.addEventListener?.('change',fitScreen);
 fitScreen();
-$('bReboot').onclick=async()=>{if(!confirm('Restart the whole Heltec board? The disk is saved first; unsaved work on the Mac is lost.'))return;
+$('bReboot').onclick=async()=>{if(!confirm('Restart the whole )HTML" BOARD_KIND R"HTML(? The disk is saved first; unsaved work on the Mac is lost.'))return;
  try{await post('/api/reboot')}catch(e){}msg(lastStatus.mode=='ap'?'Restarting the board. Its hotspot is off for a few seconds; if this computer doesn\'t rejoin )HTML" BOARD_AP_SSID R"HTML( by itself, pick it in your Wi-Fi list.':'Restarting the board...');waitForBoard()};
-$('bSleep').onclick=async()=>{if(!confirm('Put the Heltec board to sleep? The disk is saved first. Press PRG (or RST) on the board to wake it.'))return;
- try{await post('/api/sleep')}catch(e){}asleep=true;msg('The board is asleep. Press PRG (or RST) on the board to wake it; this page reconnects by itself.');
+$('bSleep').onclick=async()=>{if(!confirm('Put the )HTML" BOARD_KIND R"HTML( to sleep? The disk is saved first. Press )HTML" BTN_WAKE R"HTML( on the board to wake it.'))return;
+ try{await post('/api/sleep')}catch(e){}asleep=true;msg('The board is asleep. Press )HTML" BTN_WAKE R"HTML( on the board to wake it; this page reconnects by itself.');
  await new Promise(r=>setTimeout(r,4000));
  for(;;){try{const r=await fetch('/api/status',{cache:'no-store'});if(r.ok)break}catch(e){}await new Promise(r=>setTimeout(r,2000))}
  asleep=false;reconnect();await status();msg('Awake. Starting the Mac...');setTimeout(()=>msg(''),4000)};
@@ -300,7 +318,7 @@ async function status(){try{const s=await (await fetch('/api/status',{cache:'no-
  renderLib(s);
  $('diskRO').classList.toggle('on',!!s.diskRO);$('turbo').textContent='Turbo: '+(s.turbo?'on':'off');$('turbo').classList.toggle('on',!!s.turbo);
  $('ram').value=String(s.ramSetting);$('wifiState').textContent=s.mode=='ap'?'Hotspot mode: join )HTML" BOARD_AP_SSID R"HTML(, then pick your network.':'Connected to '+s.ssid+' ('+s.rssi+' dBm)';
-}catch(e){boardWasDown=true;if(asleep)$('hdr').textContent='Asleep · press PRG on the board to wake it'}}
+}catch(e){boardWasDown=true;if(asleep)$('hdr').textContent='Asleep · press )HTML" BTN_WAKE R"HTML( on the board to wake it'}}
 // After a restart, don't reload the page (that would lose the sound you switched on with your
 // click); wait for the board to answer again. The screen reconnects by itself, and the board
 // holds the Mac until it has, so you hear the startup sound.

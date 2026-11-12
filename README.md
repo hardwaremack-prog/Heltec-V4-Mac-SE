@@ -19,6 +19,11 @@ board's address on a PC, a Raspberry Pi or a phone, and you're at the Finder.
 > `firmware/Heltec-V3-Mac128k.bin`), included here for convenience. Its home is
 > [Heltec V3 Mac 128K](https://github.com/hardwaremack-prog/Heltec-V3-Mac128k). Both share the same
 > code, and a V3 and a V4 can sit on the same network.
+>
+> Just a **plain ESP32 dev board** (NodeMCU-32S / ESP32-DevKitC, 4 MB flash)? It runs the same
+> 128K Mac: [`flasher/ESP32-Mac128k-Flasher.html`](flasher/ESP32-Mac128k-Flasher.html). See
+> [Heltec V3 Mac 128K](https://github.com/hardwaremack-prog/Heltec-V3-Mac128k#also-on-a-plain-esp32-esp32-mac-128k)
+> for what's different there.
 
 ## Highlights
 
@@ -214,7 +219,7 @@ limit, so with arduino-cli add `--build-property upload.maximum_size=2097152`.
 | `web/` | The browser-side unpackers and the virtual ImageWriter |
 | `flasher/` | The one-page flasher and the script that builds it |
 | `host/` | A PC build of the same emulator and web page, for testing |
-| `firmware/` | The ready-to-flash images: `Heltec-V4-Mac-SE.bin` (this SE build) and `Heltec-V3-Mac128k.bin` (the V3's 128K build) |
+| `firmware/` | The ready-to-flash images: `Heltec-V4-Mac-SE.bin` (this SE build), plus `Heltec-V3-Mac128k.bin` and `ESP32-Mac128k.bin` (the 128K builds for the V3 and a plain ESP32) |
 
 The PC build runs the same code on a desktop:
 

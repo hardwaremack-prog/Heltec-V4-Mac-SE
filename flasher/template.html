@@ -68,7 +68,7 @@ kbd{font:12px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 <p class="status" id="backupMsg"></p></section>
 
 <section class="step" id="s3"><h2><span class="n">4</span>First start</h2>
-<p>The board restarts by itself (if the screen stays dark, tap <kbd>RST</kbd> once). Then join the Wi-Fi hotspot <b>%%AP%%</b> (password <code>heltecmac</code>), open <b>http://192.168.4.1</b>, pick your home network, and upload your ROM and a disk on the page it shows next.</p></section>
+<p>The board restarts by itself (%%RESTARTHINT%%). Then join the Wi-Fi hotspot <b>%%AP%%</b> (password <code>heltecmac</code>), open <b>http://192.168.4.1</b>, pick your home network, and upload your ROM and a disk on the page it shows next.</p></section>
 
 <section class="step" id="s5"><h2><span class="n">5</span>Watch the board start (optional)</h2>
 <p>Shows what the board prints while it starts: Wi-Fi, memory and whether the Mac started. Useful if it gets stuck. Click <b>Disconnect</b> above first if you're still connected for flashing.</p>
@@ -82,13 +82,13 @@ kbd{font:12px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 <li>On Linux, add yourself to the <code>dialout</code> group, then log out and back in.</li>
 </ul></details>
 <details><summary>"Failed to connect" or it stops at "Connecting..."</summary><ul>
-<li>Put the board in download mode by hand: hold <kbd>PRG</kbd>, tap <kbd>RST</kbd>, let go of <kbd>PRG</kbd>. Then click <b>Connect</b> again.</li>
+<li>Put the board in download mode by hand: hold <kbd>%%PRG%%</kbd>, tap <kbd>%%RST%%</kbd>, let go of <kbd>%%PRG%%</kbd>. Then click <b>Connect</b> again.</li>
 <li>Pick <b>Slow (115200)</b> under Speed.</li>
 <li>Make sure no other program or browser tab has the port open.</li>
 </ul></details>
 <details><summary>It flashed, but the screen stays blank or keeps rebooting</summary><ul>
 <li>Flash again with <b>Erase the whole board first</b> ticked.</li>
-<li>Press <kbd>RST</kbd> once after flashing.</li>
+<li>Press <kbd>%%RST%%</kbd> once after flashing.</li>
 </ul></details>
 <details><summary>Going back to Meshtastic</summary><ul><li>Use the official flasher at flasher.meshtastic.org.</li></ul></details>
 </section>
@@ -135,20 +135,20 @@ $('connect').onclick = async () => {
     const port = await navigator.serial.requestPort({});
     transport = new Transport(port, true);
     loader = new ESPLoader({ transport, baudrate: +$('baud').value, terminal: term, romBaudrate: 115200 });
-    set('connMsg', 'Connecting... (if this hangs: hold PRG, tap RST, let go of PRG)');
+    set('connMsg', 'Connecting... (if this hangs: hold %%PRG%%, tap %%RST%%, let go of %%PRG%%)');
     const chip = await loader.main();
     const mac = await loader.chip.readMac(loader).catch(() => '');
     const flashId = await loader.readFlashId().catch(() => 0);
     const sizeMB = flashId ? (1 << ((flashId >> 16) & 0xff)) / 1048576 : 0; flashBytes = sizeMB ? sizeMB * 1048576 : 8 * 1048576;
     $('chipInfo').textContent = `${chip}${mac ? '  ·  MAC ' + mac : ''}${sizeMB ? '  ·  ' + sizeMB + ' MB flash' : ''}`;
-    if (!/ESP32-S3/i.test(chip)) set('connMsg', 'Connected, but this isn\'t an ESP32-S3. %%NAME%% is for the %%BOARD%%.', 'warn');
+    if (!%%CHIPRE%%.test(chip)) set('connMsg', 'Connected, but this isn\'t an %%CHIPNAME%%. %%NAME%% is for the %%BOARD%%. %%OTHERCHIP%%', 'warn');
     else if (sizeMB && sizeMB < %%FLASHMB%%) set('connMsg', 'Connected, but the board has less than %%FLASHMB%% MB of flash; %%NAME%% needs %%FLASHMB%% MB. %%WRONGBOARD%%', 'warn');
     else { set('connMsg', 'Connected to the board.', 'ok'); $('s1').classList.add('done'); }
     connButtons(true);
   } catch (e) {
     log('Connect failed: ' + (e.message || e));
     set('connMsg', /No port selected/i.test(e.message) ? 'No board chosen. Click Connect and pick it from the list.' :
-      'Couldn\'t talk to the board. Put it in download mode (hold PRG, tap RST, let go), pick Slow speed, and try again. Details are in the log.', 'bad');
+      'Couldn\'t talk to the board. Put it in download mode (hold %%PRG%%, tap %%RST%%, let go), pick Slow speed, and try again. Details are in the log.', 'bad');
     try { await transport?.disconnect(); } catch {}
     transport = loader = null;
   }
@@ -237,7 +237,7 @@ $('flash').onclick = async () => {
     connButtons(false);
   } catch (e) {
     log('Flash failed: ' + (e.message || e));
-    set('flashMsg', 'Flashing stopped partway. Unplug and replug the board, put it in download mode (hold PRG, tap RST, let go), choose Slow speed, Connect and Flash again. Nothing is damaged by a failed flash.', 'bad');
+    set('flashMsg', 'Flashing stopped partway. Unplug and replug the board, put it in download mode (hold %%PRG%%, tap %%RST%%, let go), choose Slow speed, Connect and Flash again. Nothing is damaged by a failed flash.', 'bad');
     $('disc').disabled = false;
   }
 };
@@ -292,7 +292,7 @@ $('restore').onclick = async () => {
   busy(true);
   try {
     const data = await fileToBinStr(f);
-    if (data.charCodeAt(0) !== 0xE9) throw new Error('that file doesn\'t start with ESP32 firmware, so it isn\'t a board backup');
+    if (data.charCodeAt(0) !== 0xE9 && data.charCodeAt(0x1000) !== 0xE9) throw new Error('that file doesn\'t start with ESP32 firmware, so it isn\'t a board backup');
     set('backupMsg', 'Writing the backup... keep the board plugged in. Most of it is empty space, which goes quickly.');
     await loader.writeFlash({ fileArray: [{ data, address: 0 }], flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep',
       eraseAll: false, compress: true,
@@ -307,7 +307,7 @@ $('restore').onclick = async () => {
     return;
   } catch (e) {
     log('Restore failed: ' + (e.message || e));
-    set('backupMsg', 'Writing stopped: ' + (e.message || e) + '. Put the board in download mode (hold PRG, tap RST, let go), reconnect and try again.', 'bad');
+    set('backupMsg', 'Writing stopped: ' + (e.message || e) + '. Put the board in download mode (hold %%PRG%%, tap %%RST%%, let go), reconnect and try again.', 'bad');
   }
   busy(false);
 };

@@ -11,3 +11,5 @@ flasher/node_modules/
 *-backup-*.bin
 host/obj-v4/
 host/machost-v4
+host/obj-esp32/
+host/machost-esp32

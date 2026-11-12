@@ -75,18 +75,33 @@ static uint32_t rom_get_version(uint8_t *rom_base)
 }
 
 /* Not perf-critical, so open-coding to support BE _and_ unaligned access */
+/* Heltec-Mac: with split RAM (plain ESP32, see machw.h) the ROM is patched in the RAM's
+ * banks, which aren't next to each other, so every byte goes through RB(). */
+#ifdef UMAC_RAM_SPLIT
+static uint8_t *rom_bank[RAM_BANKS];
+#define RB(offset)      (rom_bank[((offset) >> RAM_BANK_SHIFT) & (RAM_BANKS - 1)][(offset) & RAM_BANK_MASK])
+#else
+#define RB(offset)      (rom_base[(offset)])
+#endif
+static void     rom_copy_in(uint8_t *rom_base, unsigned int offset, const uint8_t *src, unsigned int len)
+{
+        (void)rom_base;
+        for (unsigned int i = 0; i < len; i++)
+                RB(offset + i) = src[i];
+}
+
 #define ROM_WR32(offset, data) do {                                     \
-                rom_base[(offset)+0] = ((data) >> 24) & 0xff;           \
-                rom_base[(offset)+1] = ((data) >> 16) & 0xff;           \
-                rom_base[(offset)+2] = ((data) >> 8) & 0xff;            \
-                rom_base[(offset)+3] = (data) & 0xff;                   \
+                RB((offset)+0) = ((data) >> 24) & 0xff;                 \
+                RB((offset)+1) = ((data) >> 16) & 0xff;                 \
+                RB((offset)+2) = ((data) >> 8) & 0xff;                  \
+                RB((offset)+3) = (data) & 0xff;                         \
         } while (0)
 #define ROM_WR16(offset, data) do {                             \
-                rom_base[(offset)+0] = ((data) >> 8) & 0xff;    \
-                rom_base[(offset)+1] = (data) & 0xff;           \
+                RB((offset)+0) = ((data) >> 8) & 0xff;          \
+                RB((offset)+1) = (data) & 0xff;                 \
         } while (0)
 #define ROM_WR8(offset, data) do {                              \
-                rom_base[(offset)+0] = (data) & 0xff;           \
+                RB((offset)+0) = (data) & 0xff;                 \
         } while (0)
 
 
@@ -103,7 +118,7 @@ static void     rom_patch_plusv3(uint8_t *rom_base)
         ROM_WR16(0xd92, 0xb381 /* eor.l d1, d1 */);     // Checksum compares 'same' kthx
 
         /* Replace .Sony driver: */
-        memcpy(rom_base + ROM_PLUSv3_SONYDRV, sony_driver, sizeof(sony_driver));
+        rom_copy_in(rom_base, ROM_PLUSv3_SONYDRV, sony_driver, sizeof(sony_driver));
         /* Register the FaultyRegion for the Sony driver: */
         ROM_WR32(ROM_PLUSv3_SONYDRV + sizeof(sony_driver) - 4, PV_SONY_ADDR);
 
@@ -246,14 +261,14 @@ static void     rom_patch_plusv3(uint8_t *rom_base)
 static void     rom_patch_128k(uint8_t *rom_base)
 {
         /* Replace .Sony with the paravirtual driver, as for the Plus: */
-        memcpy(rom_base + ROM_128K_SONYDRV, sony_driver, sizeof(sony_driver));
+        rom_copy_in(rom_base, ROM_128K_SONYDRV, sony_driver, sizeof(sony_driver));
         ROM_WR32(ROM_128K_SONYDRV + sizeof(sony_driver) - 4, PV_SONY_ADDR);
 
         /* Keep the ROM's self-test happy: recompute its checksum (sum of the
          * 16-bit words after the 4-byte checksum field). */
         uint32_t sum = 0;
         for (int i = 4; i < ROM_128K_SIZE; i += 2)
-                sum += (rom_base[i] << 8) | rom_base[i + 1];
+                sum += (RB(i) << 8) | RB(i + 1);
         ROM_WR32(0, sum);
 
         /* Mirror across the window, like the real 64 KB ROM in its 128 KB window */
@@ -264,7 +279,8 @@ static void     rom_patch_128k(uint8_t *rom_base)
 static void     rom_mirror(uint8_t *rom_base, unsigned int len)
 {
         for (unsigned int o = len; o + len <= ROM_SIZE; o += len)
-                memcpy(rom_base + o, rom_base, len);
+                for (unsigned int i = 0; i < len; i++)
+                        RB(o + i) = RB(i);
 }
 
 #if ROM_SIZE >= 0x40000
@@ -275,7 +291,7 @@ static void     rom_patch_se(uint8_t *rom_base)
         ROM_WR16(134, 0x6002);                  /* bra.s +2 */
         ROM_WR16(286, 0x6002);
         /* Replace .Sony with the paravirtual driver */
-        memcpy(rom_base + ROM_SE_SONYDRV, sony_driver, sizeof(sony_driver));
+        rom_copy_in(rom_base, ROM_SE_SONYDRV, sony_driver, sizeof(sony_driver));
         ROM_WR32(ROM_SE_SONYDRV + sizeof(sony_driver) - 4, PV_SONY_ADDR);
 }
 #endif
@@ -285,6 +301,14 @@ int      rom_is_se(const uint8_t *rom_base)
         uint32_t v = rom_get_version((uint8_t *)rom_base);
         return v == ROM_SE_VERSION || v == ROM_SEFDHD_VERSION;
 }
+
+#ifdef UMAC_RAM_SPLIT
+int      rom_patch_banks(uint8_t *const banks[RAM_BANKS])
+{
+        for (int i = 0; i < RAM_BANKS; i++) rom_bank[i] = banks[i];
+        return rom_patch(banks[0]);
+}
+#endif
 
 int      rom_patch(uint8_t *rom_base)
 {

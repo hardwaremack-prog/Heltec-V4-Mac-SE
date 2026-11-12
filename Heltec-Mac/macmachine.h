@@ -144,6 +144,11 @@ class MacMachine {
   int lastUploadIndex = -1;
   std::string uploadMsg;
   void stop();                                        // release RAM + ROM mapping (before uploads)
+  // A block set aside for the Mac's RAM before Wi-Fi starts (plain ESP32: its heap is split into
+  // pieces, and only early on is there one piece big enough). start() uses it when it fits.
+  void setFixedRam(uint8_t* p, uint32_t bytes) { fixedRam = p; fixedSize = bytes; }
+  // Split RAM (plain ESP32): the Mac's 128 KB as four 32 KB banks set aside at boot
+  void setFixedBanks(uint8_t* const b[4]) { for (int i = 0; i < 4; i++) fixedBank[i] = b[i]; fixedSize = 128 * 1024; }
 
   FlashArea* romArea = nullptr;
   FlashArea* diskArea = nullptr;
@@ -152,6 +157,11 @@ class MacMachine {
   MacMeta m;
   uint8_t* ram = nullptr;
   uint32_t ramSize = 0;
+  uint8_t* fixedRam = nullptr;
+  uint32_t fixedSize = 0;
+  uint8_t* bank[4] = {};        // split RAM: the Mac's RAM in four 32 KB banks (bank[0] == ram)
+  uint8_t* fixedBank[4] = {};
+  void clearRam();
   const uint8_t* rom = nullptr;
   int64_t lastVsync = 0, last1Hz = 0, macTime = 0, lastDiskWrite = 0, curNow = 0;
   bool timeInit = false;

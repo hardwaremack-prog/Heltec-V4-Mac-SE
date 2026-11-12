@@ -77,6 +77,14 @@ static unsigned int g_int_controller_pending = 0;      /* list of pending interr
 static unsigned int g_int_controller_highest_int = 0;  /* Highest pending interrupt */
 
 uint8_t *_ram_base;
+#ifdef UMAC_RAM_SPLIT
+uint8_t *_ram_bank[RAM_BANKS];
+void    umac_set_ram_banks(uint8_t *const banks[RAM_BANKS])
+{
+        for (int i = 0; i < RAM_BANKS; i++) _ram_bank[i] = banks[i];
+        _ram_base = banks[0];
+}
+#endif
 unsigned int umac_ram_size = 128*1024;   /* Heltec-Mac: set before umac_init() */
 uint8_t *_rom_base;
 
@@ -778,7 +786,11 @@ void    cpu_instr_callback(int pc)
 
 int     umac_init(void *ram_base, void *rom_base, disc_descr_t discs[DISC_NUM_DRIVES])
 {
+#ifdef UMAC_RAM_SPLIT
+        (void)ram_base;
+#else
         _ram_base = ram_base;
+#endif
         _rom_base = rom_base;
         umac_is_se = rom_is_se(rom_base);
         adb_reset();
@@ -942,7 +954,7 @@ int     umac_sound_frame(uint8_t samples[370], int *volume)
         {
                 static int n = 0; static uint8_t lra = 0xEE, lrb = 0xEE;
                 int lo = 255, hi = 0;
-                for (int i = 0; i < 370; i++) { int v = _ram_base[RAM_SIZE - 0x300 + i * 2]; if (v < lo) lo = v; if (v > hi) hi = v; }
+                for (int i = 0; i < 370; i++) { int v = RAM_RD8(RAM_SIZE - 0x300 + i * 2); if (v < lo) lo = v; if (v > hi) hi = v; }
                 if (via_ra_val != lra || via_rb_val != lrb || (hi - lo) > 0 || (++n % 300) == 0)
                         fprintf(stderr, "snd f%d: RA=%02x (vol %d, buf%s) RB=%02x (sound %s) samples %d..%d\n", n,
                                 via_ra_val, via_ra_val & 7, (via_ra_val & 8) ? "main" : "ALT", via_rb_val,
@@ -952,7 +964,7 @@ int     umac_sound_frame(uint8_t samples[370], int *volume)
 #endif
         uint32_t base = RAM_SIZE - 0x300;
         for (int i = 0; i < 370; i++)
-                samples[i] = _ram_base[base + i * 2];
+                samples[i] = RAM_RD8(base + i * 2);
         if (volume)
                 *volume = via_ra_val & 7;
         return !(via_rb_val & 0x80);

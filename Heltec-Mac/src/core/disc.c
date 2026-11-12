@@ -92,6 +92,10 @@ int     disc_pv_hook(uint8_t opcode)
 
 #define Mac2HostAddr(addr)              (ram_get_base() + MACRAM(addr))
 
+/* Heltec-Mac: move disk data through the read/write callbacks.  With split RAM (plain ESP32,
+ * see machw.h) a buffer can run across the two banks, so it goes in pieces. */
+static int      disc_xfer(void *infop, int wr, uint32_t addr, void *buffer, uint32_t position, size_t length);
+
 // These access host pointers, in BE/unaligned:
 #define WriteBEInt32(addr, val)         WRITE_LONG(((uint8_t *)(addr)), 0, val)
 #define WriteBEInt16(addr, val)         WRITE_WORD(((uint8_t *)(addr)), 0, val)
@@ -142,6 +146,27 @@ typedef struct sony_drive_info {
 	disc_op_read op_read;   // Callback for read (when data == 0)
 	disc_op_write op_write; //  ''    ''    write  ''
 } sony_drinfo_t;
+
+static int      disc_xfer(void *infop, int wr, uint32_t addr, void *buffer, uint32_t position, size_t length)
+{
+        sony_drinfo_t *info = (sony_drinfo_t *)infop;
+#ifdef UMAC_RAM_SPLIT
+        (void)buffer;
+        while (length) {
+                size_t n = (RAM_BANK_MASK + 1) - (addr & RAM_BANK_MASK);   /* to the end of this bank */
+                if (n > length) n = length;
+                int r = wr ? info->op_write(info->op_ctx, ram_ptr(addr), position, n)
+                           : info->op_read(info->op_ctx, ram_ptr(addr), position, n);
+                if (r < 0) return r;
+                addr = MACRAM(addr + n); position += n; length -= n;
+        }
+        return 0;
+#else
+        (void)addr;
+        return wr ? info->op_write(info->op_ctx, buffer, position, length)
+                  : info->op_read(info->op_ctx, buffer, position, length);
+#endif
+}
 
 // List of drives handled by this driver
 static sony_drinfo_t drives[DISC_NUM_DRIVES];
@@ -310,7 +335,8 @@ int16_t SonyPrime(uint32_t pb, uint32_t dce)
 	WriteMacInt8(info->status + dsDiskInPlace, 2);	// Disk accessed
 
 	// Get parameters
-	void *buffer = Mac2HostAddr(ReadMacInt32(pb + ioBuffer)); // FIXME
+	uint32_t bufAddr = MACRAM(ReadMacInt32(pb + ioBuffer));
+	void *buffer = ram_ptr(bufAddr); // FIXME
 	size_t length = ReadMacInt32(pb + ioReqCount);
 	uint32_t position = ReadMacInt32(dce + dCtlPosition);
 	if ((length & 0x1ff) || (position & 0x1ff)) {
@@ -331,7 +357,7 @@ int16_t SonyPrime(uint32_t pb, uint32_t dce)
                 } else {
                         if (info->op_read) {
                                 DDBG(" (read op into buffer)\n");
-                                int r = info->op_read(info->op_ctx, buffer, position, length);
+                                int r = disc_xfer(info, 0, bufAddr, buffer, position, length);
                                 if (r < 0)
                                         return set_dsk_err(paramErr);
                         } else {
@@ -358,7 +384,7 @@ int16_t SonyPrime(uint32_t pb, uint32_t dce)
                 } else {
                         if (info->op_write) {
                                 DDBG(" (write op into buffer)\n");
-                                int r = info->op_write(info->op_ctx, buffer, position, length);
+                                int r = disc_xfer(info, 1, bufAddr, buffer, position, length);
                                 if (r < 0)
                                         return set_dsk_err(paramErr);
                         } else {
@@ -525,7 +551,8 @@ int16_t SonyStatus(uint32_t pb, uint32_t dce)
 			break;
 
 		case 8:			// Get drive status
-                        memcpy(pb + csParam + ram_get_base(), ram_get_base() + info->status, 22);
+                        for (int i = 0; i < 22; i++)
+                                WriteMacInt8(pb + csParam + i, ReadMacInt8(info->status + i));
 			break;
 
 		case 10:		// Get disk type and MFM info
