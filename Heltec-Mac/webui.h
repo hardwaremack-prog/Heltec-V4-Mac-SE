@@ -21,10 +21,12 @@
 #define RAM_NOTE "On the Heltec V3, 128 KB is what fits next to Wi-Fi (a real Mac 128K). 256 KB is used only if there's room. With the Mac 128K ROM, 128 KB runs 1984 software like MacPaint and MacWrite."
 #endif
 #ifdef BOARD_ESP32
+#define ADDR_NOTE "''"
 #define BTN_WAKE "BOOT (or EN)"
 #define BOARD_KIND "ESP32 board"
 #define BOARD_RST_TIP "like pressing EN"
 #else
+#define ADDR_NOTE "'  (VNC :5900)'"
 #define BTN_WAKE "PRG (or RST)"
 #define BOARD_KIND "Heltec board"
 #define BOARD_RST_TIP "like pressing RST"
@@ -311,7 +313,7 @@ let boardWasDown=false,asleep=false;
 async function status(){try{const s=await (await fetch('/api/status',{cache:'no-store'})).json();lastStatus=s;
  if(boardWasDown){boardWasDown=false;reconnect()}
  const rows=[['Mac',s.state],['RAM',s.ram?kb(s.ram):'-'],['Speed',s.speed+'% of real speed'+(s.turbo?' (turbo)':'')],['Viewers',(s.web?'browser ':'')+(s.vnc?'VNC':'')||'none'],
-  ['Battery',s.batText||'-'],['Up',s.uptime!==undefined?(s.uptime<120?s.uptime+' s':Math.round(s.uptime/60)+' min')+' · last start: '+s.reset:'-'],['Address',s.ip+'  (VNC :5900)'],['Free memory',kb(s.heap)+' (largest piece '+kb(s.heapBlock||0)+')']];
+  ['Battery',s.batText||'-'],['Up',s.uptime!==undefined?(s.uptime<120?s.uptime+' s':Math.round(s.uptime/60)+' min')+' · last start: '+s.reset:'-'],['Address',s.ip+)HTML" ADDR_NOTE R"HTML(],['Free memory',kb(s.heap)+' (largest piece '+kb(s.heapBlock||0)+')']];
  $('st').innerHTML=rows.map(r=>'<dt>'+r[0]+'</dt><dd>'+esc(String(r[1]))+'</dd>').join('');
  $('hdr').textContent=s.state+' · '+(s.ram?kb(s.ram):'')+(s.bat>0&&s.bat<=4300?' · battery '+s.batPct+'%':'');
  $('romState').innerHTML=s.romOk?'<span class="ok">ROM loaded: '+esc(s.romName)+'</span>':'<span class="bad">No ROM yet - upload yours to start the Mac.</span>';

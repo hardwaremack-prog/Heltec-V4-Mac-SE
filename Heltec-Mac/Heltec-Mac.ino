@@ -48,6 +48,9 @@ extern "C" {
 #define PIN_LED 2        // the blue LED on most ESP32 dev boards
 #define PIN_BUTTON 0     // BOOT button
 #define HAS_BATTERY 0
+#define HAS_VNC 0        // no room for VNC next to the Mac and the web page
+#define EMU_STACK 4608   // task stacks measured with the [mem] report, plus room to spare
+#define NET_STACK 7168
 #else
 // ---------------- Heltec V3 / V4 pins
 #define PIN_VEXT 36      // LOW = power to OLED
@@ -57,6 +60,9 @@ extern "C" {
 #define PIN_LED 35
 #define PIN_BUTTON 0     // PRG button
 #define HAS_BATTERY 1
+#define HAS_VNC 1
+#define EMU_STACK 8192
+#define NET_STACK 12288
 #endif
 
 static const char* AP_SSID = BOARD_AP_SSID;
@@ -660,11 +666,15 @@ static void netTask(void*) {
     }
     if (!cleanMarked && millis() > 60000) { cleanMarked = true; mac.bootWasClean(); }
     web.handleClient();
+#if HAS_VNC
     WiFiClient nc = vncListener.accept();
     if (nc) vnc.attach(new WifiConn(nc));
+#endif
     WiFiClient wc = wsListener.accept();
     if (wc) webView.attach(new WifiConn(wc));
+#if HAS_VNC
     vnc.poll();
+#endif
     webView.poll();
 #ifndef BOARD_ESP32   // (a plain ESP32's LED is a status light: ledTick)
     {   // LED: a short, dim blink every 3 s while someone is watching
@@ -736,6 +746,11 @@ void setup() {
   }
   mac.begin(&romPart, &diskPart);
   esp_reset_reason_t rr = esp_reset_reason();
+  {
+    static const char* why[] = {"unknown", "power on or EN button", "external pin", "restart", "crash", "interrupt watchdog",
+                                "task watchdog", "watchdog", "woke from sleep", "brownout (power dip)", "SDIO"};
+    Serial.printf("Last start: %s\n", (int)rr >= 0 && (int)rr < 11 ? why[rr] : "other");
+  }
   if (rr == ESP_RST_PANIC || rr == ESP_RST_INT_WDT || rr == ESP_RST_TASK_WDT || rr == ESP_RST_WDT) {
     Serial.println("Last run crashed: using a smaller Mac in Auto mode");
     mac.lastBootCrashed();
@@ -815,12 +830,14 @@ void setup() {
   // Internet time as a fallback when no browser is open (uses the time zone the browser last told us)
   if (!apMode) configTime(0, 0, "pool.ntp.org", "time.google.com");
 
+#if HAS_VNC
   vncListener.begin(); vncListener.setNoDelay(true);
+#endif
   wsListener.begin(); wsListener.setNoDelay(true);
   setupWeb();
 
-  xTaskCreatePinnedToCore(emuTask, "mac", 8192, nullptr, 1, &emuTaskHandle, 1);
-  xTaskCreatePinnedToCore(netTask, "net", 12288, nullptr, 2, nullptr, 0);
+  xTaskCreatePinnedToCore(emuTask, "mac", EMU_STACK, nullptr, 1, &emuTaskHandle, 1);
+  xTaskCreatePinnedToCore(netTask, "net", NET_STACK, nullptr, 2, nullptr, 0);
 
   // Now the Mac gets what's left, after Wi-Fi, the servers and the tasks have taken their share.
   // If the board crashed three boots in a row, stay in safe mode (no Mac) so the page still works.
