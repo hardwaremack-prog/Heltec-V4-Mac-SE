@@ -21,7 +21,7 @@ BOARDS = {
   'esp32': dict(NAME='ESP32 Mac 128K', BOARD='plain ESP32 dev board (NodeMCU-32S / ESP32-DevKitC)', SHORT='ESP32 board', AP='ESP32-Mac-Setup', FLASHMB='4',
               BAUD='115200', PRG='BOOT', RST='EN', CHIPRE='/^ESP32(?!-[SCHP])/i', CHIPNAME='ESP32 (ESP32-WROOM)',
               OTHERCHIP='For a Heltec V3 use Heltec-V3-Mac128k-Flasher.html; for a V4, Heltec-V4-Mac-SE-Flasher.html.',
-              RESTARTHINT='if it doesn&apos;t, press <kbd>EN</kbd> once; the blue LED blinks while a browser is watching',
+              RESTARTHINT='if it doesn&apos;t, press <kbd>EN</kbd> once. The blue LED blinks slowly while it starts and then breathes once it&apos;s ready',
               PORTHELP='Click <b>Connect</b> and pick the board. On Windows it shows as <b>CP210x</b>, <b>Silicon Labs</b> or <b>CH340</b> (COM port); on a Mac, <b>usbserial</b> or <b>wchusbserial</b>.',
               DRIVERHELP='Windows needs the USB driver for the chip next to the USB socket: <b>CP210x</b> from Silicon Labs (silabs.com, search "CP210x VCP drivers") or <b>CH340</b> from WCH (wch-ic.com). After installing, unplug and replug the board.',
               WRONGBOARD='', BACKUP='esp32-mac-backup', OUT='ESP32-Mac128k-Flasher.html'),

@@ -206,6 +206,44 @@ static const char* stateText() {
   return "Running";
 }
 
+#ifdef BOARD_ESP32
+// ---------------- the blue LED (GPIO 2) as a status light, like The Shelf on this board:
+//   starting up             slow blink (half a second on, half off)
+//   running                 breathing: a slow, smooth fade in and out, about 4 s a breath
+//   Mac disk busy           a quick flicker while the Mac reads or writes its disk
+//   ROM or disk upload      fast flash while it's written to the board
+// Driven by a timer every 20 ms (no task of its own: memory is short on this board).
+#include <esp_timer.h>
+static esp_timer_handle_t ledTimer = nullptr;
+static void ledTick(void*) {
+  static uint32_t lastDisk = 0, lastUp = 0, diskAt = 0, upAt = 0;
+  static int lastDuty = -1;
+  uint32_t now = millis();
+  if (mac.diskActivity != lastDisk) { lastDisk = mac.diskActivity; diskAt = now; }
+  if (mac.uploadActivity != lastUp) { lastUp = mac.uploadActivity; upAt = now; }
+  int duty;
+  if (upAt && now - upAt < 400) duty = (now / 70) % 2 ? 255 : 0;                 // uploading: fast flash
+  else if (!macReady) duty = (now / 500) % 2 ? 255 : 0;                           // starting: slow blink
+  else if (diskAt && now - diskAt < 120) duty = (now / 40) % 2 ? 255 : 0;         // disk busy: flicker
+  else {                                                                           // running: breathing
+    float t = (now % 4000) / 4000.0f;
+    float v = 0.5f - 0.5f * cosf(t * 2 * PI);
+    duty = (int)(4 + v * v * 251);                                                 // squared: looks even
+  }
+  if (duty != lastDuty) { ledcWrite(PIN_LED, duty); lastDuty = duty; }
+}
+static void ledBegin() {
+  ledcAttach(PIN_LED, 5000, 8);
+  esp_timer_create_args_t a = {};
+  a.callback = ledTick; a.name = "led";
+  if (esp_timer_create(&a, &ledTimer) == ESP_OK) esp_timer_start_periodic(ledTimer, 20000);
+}
+static void ledOff() {
+  if (ledTimer) esp_timer_stop(ledTimer);
+  ledcWrite(PIN_LED, 0);
+}
+#endif
+
 // ---------------- battery (Heltec V3: divider on GPIO1, switched on by GPIO37)
 // V3.0/3.1 boards switch the divider on with GPIO37 LOW, V3.2 with HIGH; we try LOW first and
 // flip once if it reads nothing. Same scaling as Meshtastic's heltec_v3 variant.
@@ -372,7 +410,11 @@ static void goToSleep() {
   delay(1500);
   if (oled.ok) { oled.cmd(0x8D); oled.cmd(0x10); oled.cmd(0xAE); }   // charge pump off, display off
   if (PIN_VEXT >= 0) digitalWrite(PIN_VEXT, HIGH);                      // cut power to the OLED
+#ifdef BOARD_ESP32
+  ledOff();
+#else
   analogWrite(PIN_LED, 0);
+#endif
   WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
   while (digitalRead(PIN_BUTTON) == LOW) delay(10);   // don't wake straight away if PRG is held
   holdForViewer = 0xB007CAFE;
@@ -624,11 +666,13 @@ static void netTask(void*) {
     if (wc) webView.attach(new WifiConn(wc));
     vnc.poll();
     webView.poll();
+#ifndef BOARD_ESP32   // (a plain ESP32's LED is a status light: ledTick)
     {   // LED: a short, dim blink every 3 s while someone is watching
       static int ledLevel = -1;
       int want = (vnc.active() || webView.active()) && millis() % 3000 < 60 ? 18 : 0;
       if (want != ledLevel) { analogWrite(PIN_LED, want); ledLevel = want; }
     }
+#endif
 
     uint32_t now = millis();
     if (restartAt && (int32_t)(now - restartAt) >= 0) { mac.flushDisk(); holdForViewer = 0xB007CAFE; apResume = apMode && !wifiChanged ? 0xA9C40000u | apChannel : 0; ESP.restart(); }
@@ -681,6 +725,9 @@ void setup() {
   else for (uint8_t* b : banks) heap_caps_free(b);
 #endif
   pinMode(PIN_LED, OUTPUT);
+#ifdef BOARD_ESP32
+  ledBegin();
+#endif
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   prefs.begin("macmesh", false);
 

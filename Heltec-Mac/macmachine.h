@@ -148,6 +148,9 @@ class MacMachine {
   int lastUploadIndex = -1;
   std::string uploadMsg;
   void stop();                                        // release RAM + ROM mapping (before uploads)
+  // For a status light: counters that go up whenever the Mac uses its disk, and whenever an
+  // upload (ROM or disk) writes to flash. Read from another thread; just compare with last time.
+  volatile uint32_t diskActivity = 0, uploadActivity = 0;
   // A block set aside for the Mac's RAM before Wi-Fi starts (plain ESP32: its heap is split into
   // pieces, and only early on is there one piece big enough). start() uses it when it fits.
   void setFixedRam(uint8_t* p, uint32_t bytes) { fixedRam = p; fixedSize = bytes; }

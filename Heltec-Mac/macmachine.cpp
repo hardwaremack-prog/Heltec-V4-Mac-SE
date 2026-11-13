@@ -126,6 +126,7 @@ void MacMachine::flushDisk() {
 
 int MacMachine::diskRead(uint8_t* data, uint32_t off, uint32_t len) {
   if (off + len > m.diskSize) return -1;
+  diskActivity++;
   while (len) {
     int32_t idx = off / SECTOR;
     uint32_t in = off % SECTOR, n = SECTOR - in;
@@ -139,6 +140,7 @@ int MacMachine::diskRead(uint8_t* data, uint32_t off, uint32_t len) {
 
 int MacMachine::diskWrite(const uint8_t* data, uint32_t off, uint32_t len) {
   if (m.diskRO || off + len > m.diskSize) return -1;
+  diskActivity++;
   while (len) {
     int32_t idx = off / SECTOR;
     uint32_t in = off % SECTOR, n = SECTOR - in;
@@ -465,6 +467,7 @@ void MacMachine::beginRomUpload() {
 // Keeps the first 128 KB; anything after it is counted but ignored (some ROM dumps carry extra
 // bytes on the end). finishRomUpload() checks that the first 128 KB is a real ROM.
 bool MacMachine::romUploadChunk(const uint8_t* d, size_t n) {
+  uploadActivity++;
   if (upPos < MAC_ROM_SIZE) {
     size_t k = MAC_ROM_SIZE - upPos < n ? MAC_ROM_SIZE - upPos : n;
     romArea->write(ROM_AREA_PATCHED + upPos, d, k);
@@ -563,6 +566,7 @@ bool MacMachine::diskWriteUpload(const uint8_t* d, size_t n) {
 }
 
 bool MacMachine::diskUploadChunk(const uint8_t* d, size_t n) {
+  uploadActivity++;
   if (upFailed) return false;
   if (!upHeaderDone) {
     while (n && upHeadN < sizeof upHead) { upHead[upHeadN++] = *d++; n--; }

@@ -129,14 +129,22 @@ $('connect').disabled = !ok;
 let transport = null, loader = null, flashBytes = 8 * 1048576;
 const connButtons = on => { for (const id of ['flash', 'disc', 'backup', 'restore']) $(id).disabled = !on; $('connect').disabled = on; };
 $('baud').value = '%%BAUD%%';
+// esptool-js gives up after 7 tries (about 5 seconds). Keep trying about three times as long, so there's
+// time to put the board in download mode by hand when its automatic reset doesn't work.
+function newLoader(port, baud) {
+  transport = new Transport(port, true);
+  const l = new ESPLoader({ transport, baudrate: baud, terminal: term, romBaudrate: 115200 });
+  const connect = l.connect.bind(l);
+  l.connect = (mode = 'default_reset', attempts = 7, detecting = true) => connect(mode, Math.max(attempts, 20), detecting);
+  return l;
+}
 const term = { clean(){}, writeLine: s => log(s), write: s => { $('log').textContent += s; } };
 $('connect').onclick = async () => {
   try {
     set('connMsg', 'Choose the board in the browser\'s list...');
     const port = await navigator.serial.requestPort({});
-    transport = new Transport(port, true);
-    loader = new ESPLoader({ transport, baudrate: +$('baud').value, terminal: term, romBaudrate: 115200 });
-    set('connMsg', 'Connecting... (if this hangs: hold %%PRG%%, tap %%RST%%, let go of %%PRG%%)');
+    loader = newLoader(port, +$('baud').value);
+    set('connMsg', 'Connecting... If it hasn\'t connected after a few seconds, put the board in download mode: hold %%PRG%%, tap %%RST%%, let go of %%PRG%%. It keeps trying for about 20 seconds.', 'warn');
     const chip = await loader.main();
     const mac = await loader.chip.readMac(loader).catch(() => '');
     const flashId = await loader.readFlashId().catch(() => 0);
@@ -215,8 +223,7 @@ async function reconnectSlow() {
   try { await transport.disconnect(); } catch {}
   await new Promise(r => setTimeout(r, 500));
   $('baud').value = '115200';
-  transport = new Transport(port, true);
-  loader = new ESPLoader({ transport, baudrate: 115200, terminal: term, romBaudrate: 115200 });
+  loader = newLoader(port, 115200);
   await loader.main();
 }
 async function writeImage(data) {
