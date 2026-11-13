@@ -67,9 +67,9 @@ static inline uint8_t *ram_get_base(void)
 #ifdef UMAC_RAM_SPLIT
 /* Heltec-Mac on a plain ESP32: the Mac's 128 KB of RAM is four 32 KB banks wherever they
  * fit (bank = address bits 15-16), because that chip's free memory is in pieces and none is
- * 128 KB.  One bank may even be instruction RAM, which only takes whole 32-bit reads and
- * writes, so every access here works on aligned 32-bit words (Mac byte n of a word is bits
- * 8n..8n+7 on this little-endian CPU).  The screen and sound buffers are in the top bank,
+ * 128 KB.  Bank 1 may even be instruction RAM, which only takes whole 32-bit reads and
+ * writes, so its accesses work on aligned 32-bit words (Mac byte n of a word is bits
+ * 8n..8n+7 on this little-endian CPU); the other banks take ordinary accesses.  The screen and sound buffers are in the top bank,
  * which is always ordinary RAM, so the screen can still be read directly. */
 #define RAM_BANK_SHIFT  15
 #define RAM_BANK_SIZE   (1u << RAM_BANK_SHIFT)
@@ -80,16 +80,25 @@ static inline uint8_t *ram_ptr(uint32_t a)             /* only for the top (scre
 {
         return _ram_bank[(a >> RAM_BANK_SHIFT) & (RAM_BANKS - 1)] + (a & RAM_BANK_MASK);
 }
+/* Only this bank can be word-only RAM (machw.h users: the ESP32 sketch puts it there); the
+ * others are ordinary RAM and take plain byte and halfword accesses, which are quicker. */
+#define RAM_WORD_BANK   1
+#define RAM_BANK_OF(a)  (((a) >> RAM_BANK_SHIFT) & (RAM_BANKS - 1))
 static inline volatile uint32_t *ram_wptr(uint32_t a)
 {
-        return (volatile uint32_t *)(_ram_bank[(a >> RAM_BANK_SHIFT) & (RAM_BANKS - 1)] + (a & RAM_BANK_MASK & ~3u));
+        return (volatile uint32_t *)(_ram_bank[RAM_BANK_OF(a)] + (a & RAM_BANK_MASK & ~3u));
 }
 static inline uint32_t ram_rd8(uint32_t a)
 {
+        unsigned b = RAM_BANK_OF(a);
+        if (b != RAM_WORD_BANK)
+                return _ram_bank[b][a & RAM_BANK_MASK];
         return (*ram_wptr(a) >> ((a & 3) * 8)) & 0xff;
 }
 static inline void ram_wr8(uint32_t a, uint32_t v)
 {
+        unsigned b = RAM_BANK_OF(a);
+        if (b != RAM_WORD_BANK) { _ram_bank[b][a & RAM_BANK_MASK] = v; return; }
         volatile uint32_t *p = ram_wptr(a);
         unsigned s = (a & 3) * 8;
         *p = (*p & ~(0xffu << s)) | ((v & 0xff) << s);
@@ -97,6 +106,9 @@ static inline void ram_wr8(uint32_t a, uint32_t v)
 static inline uint32_t ram_rd16(uint32_t a)
 {
         if (!(a & 1)) {
+                unsigned b = RAM_BANK_OF(a);
+                if (b != RAM_WORD_BANK)
+                        return __builtin_bswap16(*(uint16_t *)(_ram_bank[b] + (a & RAM_BANK_MASK)));
                 uint32_t h = (*ram_wptr(a) >> ((a & 2) * 8)) & 0xffff;
                 return ((h & 0xff) << 8) | (h >> 8);
         }
@@ -105,6 +117,11 @@ static inline uint32_t ram_rd16(uint32_t a)
 static inline void ram_wr16(uint32_t a, uint32_t v)
 {
         if (!(a & 1)) {
+                unsigned b = RAM_BANK_OF(a);
+                if (b != RAM_WORD_BANK) {
+                        *(uint16_t *)(_ram_bank[b] + (a & RAM_BANK_MASK)) = __builtin_bswap16(v);
+                        return;
+                }
                 volatile uint32_t *p = ram_wptr(a);
                 unsigned s = (a & 2) * 8;
                 uint32_t h = ((v >> 8) & 0xff) | ((v & 0xff) << 8);

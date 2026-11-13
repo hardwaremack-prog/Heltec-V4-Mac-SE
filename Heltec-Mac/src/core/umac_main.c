@@ -59,6 +59,12 @@ typedef int jmp_buf[1];
 #ifdef PICO
 #include "pico.h"
 #define FAST_FUNC(x)    __not_in_flash_func(x)
+#elif defined(BOARD_ESP32)
+/* Heltec-Mac on a plain ESP32: the memory-access functions run from internal RAM, so the
+ * 68000's every read and write doesn't wait on the flash cache (which the CPU emulator and
+ * the ROM keep busy). */
+#include "esp_attr.h"
+#define FAST_FUNC(x)    IRAM_ATTR x
 #else
 #define FAST_FUNC(x)    x
 #endif
@@ -71,6 +77,10 @@ typedef int jmp_buf[1];
 #endif
 
 #define MERR(...)       fprintf(stderr, __VA_ARGS__)
+/* Heltec-Mac: a few of these are normal (ROM hardware probes); a program that keeps doing it
+ * would otherwise spend its time printing to the serial port */
+static int dbg_count;
+#define DBG_ONCE(...)   do { if (dbg_count < 8) { dbg_count++; printf(__VA_ARGS__); } } while (0)
 
 /* Data */
 static unsigned int g_int_controller_pending = 0;      /* list of pending interrupts */
@@ -569,7 +579,7 @@ unsigned int    FAST_FUNC(cpu_read_byte)(unsigned int address)
         if (IS_DUMMY(address))
                 return 0;
 
-        printf("Attempted to read byte from address %08x\n", address);
+        DBG_ONCE("Attempted to read byte from address %08x\n", address);
         return 0;
 }
 
@@ -670,7 +680,7 @@ void    FAST_FUNC(cpu_write_byte)(unsigned int address, unsigned int value)
                         exit_error("Disc PV hook failed (%02x)", value);
                 return;
         }
-        printf("Ignoring write %02x to address %08x\n", value&0xff, address);
+        DBG_ONCE("Ignoring write %02x to address %08x\n", value&0xff, address);
 }
 
 void    FAST_FUNC(cpu_write_word)(unsigned int address, unsigned int value)
@@ -680,7 +690,7 @@ void    FAST_FUNC(cpu_write_word)(unsigned int address, unsigned int value)
                 RAM_WR16(CLAMP_RAM_ADDR(address), value);
                 return;
         }
-        printf("Ignoring write %04x to address %08x\n", value&0xffff, address);
+        DBG_ONCE("Ignoring write %04x to address %08x\n", value&0xffff, address);
 }
 
 void    FAST_FUNC(cpu_write_long)(unsigned int address, unsigned int value)
@@ -690,7 +700,7 @@ void    FAST_FUNC(cpu_write_long)(unsigned int address, unsigned int value)
                 RAM_WR32(CLAMP_RAM_ADDR(address), value);
                 return;
         }
-        printf("Ignoring write %08x to address %08x\n", value, address);
+        DBG_ONCE("Ignoring write %08x to address %08x\n", value, address);
 }
 
 /* Update function pointers for memory accessors based on overlay state/memory map layout */
