@@ -40,6 +40,9 @@
 #define BOARD_HOSTNAME  "esp32-mac"
 #define BOARD_OLED      " ESP32 MAC"
 #define BOARD_MODEL     "ESP32 dev board (NodeMCU)"
+#define BOARD_AP_PASS   "macintosh128k"
+#define BOARD_AP_IP     10, 1, 1, 250        // like The Shelf on this board; phones get 10.1.1.100 and up
+#define BOARD_AP_IP_STR "10.1.1.250"
 #else
 #define BOARD_NAME      "Heltec V3 Mac 128K"
 #define BOARD_HEADER    "HELTEC V3 MAC 128K"
@@ -47,4 +50,9 @@
 #define BOARD_HOSTNAME  "heltec-mac"
 #define BOARD_OLED      " V3 MAC"
 #define BOARD_MODEL     "Heltec WiFi LoRa 32 V3"
+#endif
+#ifndef BOARD_AP_PASS
+#define BOARD_AP_PASS   "heltecmac"
+#define BOARD_AP_IP     192, 168, 4, 1
+#define BOARD_AP_IP_STR "192.168.4.1"
 #endif

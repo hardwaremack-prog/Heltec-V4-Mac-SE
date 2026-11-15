@@ -44,7 +44,7 @@ ol{{margin:0;padding-left:20px}}
 <section class="card"><h2>How it works</h2><ol>
 <li>Use <b>Chrome or Edge</b> on a computer (they can talk to USB boards; Firefox and Safari can't).</li>
 <li>Plug in the board with a USB-C cable that carries data, open the flasher, click <b>Connect</b>, then <b>Flash</b>.</li>
-<li>Join the board's hotspot, open <b>http://192.168.4.1</b>, and add your Wi-Fi, ROM and disks.</li>
+<li>Join the board's hotspot and open <b>http://192.168.4.1</b> (on a plain ESP32: <b>http://10.1.1.250</b>, hotspot password <code>macintosh128k</code>). Add your Wi-Fi, ROM and disks.</li>
 </ol></section>
 {''.join(card(b, False) for b in others)}
 <p class="note">Source, instructions and the ready-made firmware: <a href="{main['repo']}">{main['repo'].split('/',3)[3]}</a>. Apple ROMs and system software aren't included.</p>

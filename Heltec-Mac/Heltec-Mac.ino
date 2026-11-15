@@ -66,7 +66,7 @@ extern "C" {
 #endif
 
 static const char* AP_SSID = BOARD_AP_SSID;
-static const char* AP_PASS = "heltecmac";
+static const char* AP_PASS = BOARD_AP_PASS;
 static const char* HOSTNAME = BOARD_HOSTNAME;
 #ifdef HELTEC_V4
 static const size_t RUN_RESERVE = 128 * 1024;   // PSRAM to keep for the network buffers that land there
@@ -201,7 +201,7 @@ struct Oled {
   }
 } oled;
 
-static String ipText() { return apMode ? String("192.168.4.1") : WiFi.localIP().toString(); }
+static String ipText() { return apMode ? String(BOARD_AP_IP_STR) : WiFi.localIP().toString(); }
 
 static const char* stateText() {
   if (safeMode) return "Safe mode";
@@ -315,7 +315,7 @@ static void drawOled() {
       oled.text(0, 2, "WIFI SETUP:");
       oled.text(0, 3, AP_SSID);
       oled.text(0, 4, "PASSWORD: HELTECMAC");
-      oled.text(0, 5, "OPEN 192.168.4.1");
+      oled.text(0, 5, "OPEN " BOARD_AP_IP_STR);
     } else {
       oled.text(0, 2, "OPEN IN A BROWSER:");
       oled.text(0, 3, ipText().c_str());
@@ -627,8 +627,8 @@ static void setupWeb() {
   web.on("/success.txt", [] { web.send(200, "text/plain", "success\n"); });
   web.on("/ncsi.txt", [] { web.send(200, "text/plain", "Microsoft NCSI"); });
   web.onNotFound([] {
-    if (apMode && web.hostHeader() != "192.168.4.1" && web.hostHeader().indexOf("heltec-mac") < 0) {
-      if (web.uri() == "/") { web.sendHeader("Location", "http://192.168.4.1/"); web.send(302); }   // typed a name by hand
+    if (apMode && web.hostHeader() != BOARD_AP_IP_STR && web.hostHeader().indexOf(BOARD_HOSTNAME) < 0) {
+      if (web.uri() == "/") { web.sendHeader("Location", "http://" BOARD_AP_IP_STR "/"); web.send(302); }   // typed a name by hand
       else web.send(404, "text/plain", "Not found");
       return;
     }
@@ -799,6 +799,11 @@ void setup() {
     WiFi.mode(WIFI_AP);   // hotspot only: no station side to wander off-channel (Scan turns it on briefly)
     WiFi.setSleep(false);
     WiFi.softAP(AP_SSID, AP_PASS, ch, 0, 2);
+    {
+      IPAddress ip(BOARD_AP_IP), lease(BOARD_AP_IP);
+      lease[3] = lease[3] >= 100 && lease[3] < 200 ? lease[3] + 1 : 100;   // devices get .100 and up
+      if (ip != IPAddress(192, 168, 4, 1)) WiFi.softAPConfig(ip, ip, IPAddress(255, 255, 255, 0), lease);
+    }
     // A little below full power: a strong signal, without the biggest current spikes
     WiFi.setTxPower(WIFI_POWER_17dBm);
     // Keep a quiet phone or PC on the hotspot for 10 minutes instead of the usual 5
