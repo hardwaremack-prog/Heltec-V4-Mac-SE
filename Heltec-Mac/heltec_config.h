@@ -37,7 +37,7 @@
 #define BOARD_NAME      "ESP32 Mac 128K"
 #define BOARD_HEADER    "ESP32 MAC 128K"
 #define BOARD_AP_SSID   "ESP32-Mac-Setup"
-#define BOARD_HOSTNAME  "esp32-mac"
+#define BOARD_HOSTNAME  "mac128k"
 #define BOARD_OLED      " ESP32 MAC"
 #define BOARD_MODEL     "ESP32 dev board (NodeMCU)"
 #define BOARD_AP_PASS   "macintosh128k"

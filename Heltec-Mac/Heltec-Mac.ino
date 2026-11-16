@@ -84,11 +84,43 @@ static Preferences prefs;
 static bool apMode = false;
 static String savedSsid, savedPass;
 static WiFiUDP dnsUdp;
+static WiFiUDP nbUdp;   // NetBIOS name service (port 137): Windows finds http://<hostname>/ by name
 
 // ---------------- tiny DNS answerer for hotspot mode
 // Every name points at the board, so phones and PCs see a working "internet check" (the board
 // answers those too) and stay on the hotspot instead of hopping to a network with internet.
 // Polled from the network task: no extra task, one socket, a 512-byte buffer on the stack.
+// Answers Windows' "who is <name>?" broadcasts (NetBIOS name service) for our hostname, so on
+// home Wi-Fi a PC can open http://mac128k/ (or heltec-mac/) without knowing the address. The
+// .local name (mDNS) does the same for Macs, iPhones and most other computers.
+static void nbPoll() {
+  int n = nbUdp.parsePacket();
+  if (n <= 0) return;
+  uint8_t q[128];
+  if (n < 50 || n > (int)sizeof q) { nbUdp.flush(); return; }
+  nbUdp.read(q, n);
+  if ((q[2] & 0xF8) != 0x00 || ((q[4] << 8) | q[5]) != 1 || q[12] != 0x20) return;   // one name query
+  char name[17];                                       // decode the 32-letter name into 16 bytes
+  for (int i = 0; i < 16; i++) name[i] = ((q[13 + 2 * i] - 'A') << 4) | ((q[14 + 2 * i] - 'A') & 0x0F);
+  name[16] = 0;
+  int len = 15; while (len > 0 && name[len - 1] == ' ') len--;
+  name[len] = 0;
+  if (strcasecmp(name, HOSTNAME) != 0) return;
+  IPAddress ip = WiFi.localIP();
+  uint8_t r[62];
+  r[0] = q[0]; r[1] = q[1];                            // same transaction
+  r[2] = 0x85; r[3] = 0x00;                            // response, authoritative
+  r[4] = 0; r[5] = 0; r[6] = 0; r[7] = 1; r[8] = r[9] = r[10] = r[11] = 0;
+  memcpy(r + 12, q + 12, 34);                          // the name as asked
+  r[46] = 0x00; r[47] = 0x20; r[48] = 0x00; r[49] = 0x01;   // NB, IN
+  r[50] = 0; r[51] = 0; r[52] = 0x01; r[53] = 0x2C;    // TTL 300 s
+  r[54] = 0; r[55] = 6; r[56] = 0; r[57] = 0;          // one address, B-node
+  r[58] = ip[0]; r[59] = ip[1]; r[60] = ip[2]; r[61] = ip[3];
+  nbUdp.beginPacket(nbUdp.remoteIP(), nbUdp.remotePort());
+  nbUdp.write(r, sizeof r);
+  nbUdp.endPacket();
+}
+
 static void dnsPoll() {
   int n = dnsUdp.parsePacket();
   if (n <= 0) return;
@@ -644,7 +676,7 @@ static void netTask(void*) {
   bool btnHeld = false, cleanMarked = false;
   uint32_t lastNtp = 0, lastMem = 0;
   for (;;) {
-    if (apMode) dnsPoll();
+    if (apMode) dnsPoll(); else nbPoll();
     // every 10 s on the serial port: memory (the lowest it has been) and how much of each task's
     // stack was never used, to see what's tight
     if (millis() - lastMem > 10000) {
@@ -812,6 +844,7 @@ void setup() {
   } else {
     WiFi.setAutoReconnect(true);
   }
+  if (!apMode) nbUdp.begin(137);
   if (!apMode && MDNS.begin(HOSTNAME)) {
     MDNS.addService("http", "tcp", 80);
     MDNS.addService("rfb", "tcp", 5900);

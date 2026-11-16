@@ -399,5 +399,5 @@ $('turbo').onclick=async()=>{await post('/api/turbo?on='+(lastStatus.turbo?0:1))
 $('scan').onclick=async()=>{$('scan').textContent='Scanning...';const l=await (await fetch('/api/scan')).json();
  $('ssidSel').innerHTML='<option value="">(choose)</option>'+l.map(n=>'<option>'+esc(n.s)+'</option>').join('');$('scan').textContent='Scan'};
 $('ssidSel').onchange=()=>{$('ssid').value=$('ssidSel').value};
-$('wifiSave').onclick=async()=>{const f=new URLSearchParams({ssid:$('ssid').value,pass:$('pass').value});await post('/api/wifi',f);msg('Saved. The board is restarting onto your network - find its new address on the OLED.')};
+$('wifiSave').onclick=async()=>{const f=new URLSearchParams({ssid:$('ssid').value,pass:$('pass').value});await post('/api/wifi',f);msg('Saved. The board is restarting onto your network. Then open http://)HTML" BOARD_HOSTNAME R"HTML(.local (on Windows also http://)HTML" BOARD_HOSTNAME R"HTML(/).')};
 </script></body></html>)HTML";

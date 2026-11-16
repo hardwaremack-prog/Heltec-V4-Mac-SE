@@ -93,7 +93,7 @@ and your ROM, so keep it private.
 The first time, the board makes its own hotspot: **Heltec-V4-MacSE-Setup**, password
 **heltecmac**. Join it, open **http://192.168.4.1**, pick your network under **Wi‑Fi**, and
 click **Save & restart**. The OLED then shows the board's address. It also answers to
-**heltec-macse.local** on most computers.
+**heltec-macse.local** on most computers, and on Windows also to **http://heltec-macse/**.
 
 No Wi‑Fi around? Use the Mac straight from the hotspot at **http://192.168.4.1**. The board
 answers your device's "am I online?" check so it stays on the hotspot, and picks the quietest
