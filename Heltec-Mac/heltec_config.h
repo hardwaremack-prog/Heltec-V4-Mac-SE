@@ -5,6 +5,10 @@
 //    using the V4's PSRAM for the Mac's memory. Picked automatically when you compile for
 //    "Heltec WiFi LoRa 32(V4)". This repo's partitions.csv is the V4's 16 MB layout.
 #pragma once
+
+// Firmware version: shown at the top of the web page, in the Status panel, on the serial port at
+// start-up and in the flasher (which reads it out of the firmware). Raise it with every release.
+#define FW_VERSION "1.5.0"
 #if defined(ARDUINO) && defined(__has_include)
 #if __has_include("sdkconfig.h")
 #include "sdkconfig.h"

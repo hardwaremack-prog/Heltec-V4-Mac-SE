@@ -743,6 +743,7 @@ static void netTask(void*) {
 // ---------------- setup
 void setup() {
   Serial.begin(115200);
+  Serial.println(BOARD_NAME " firmware v" FW_VERSION);
 #ifdef BOARD_ESP32
   // A plain ESP32's free memory comes in several pieces, none of them 128 KB, so the Mac's RAM
   // is four 32 KB banks (see machw.h). Set them aside now, before Wi-Fi takes its share.

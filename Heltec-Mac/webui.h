@@ -39,7 +39,7 @@ static const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
 header{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--ink);color:#eee}
 header b{font:600 18px/1 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.5px}
-header span{color:#aaa;font-size:13px}#dot{width:10px;height:10px;border-radius:50%;background:#777}
+header span{color:#aaa;font-size:13px}header .ver{font:12px ui-monospace,Menlo,Consolas,monospace;color:#888;border:1px solid #555;border-radius:4px;padding:1px 6px}#dot{width:10px;height:10px;border-radius:50%;background:#777}
 main{max-width:1180px;margin:0 auto;padding:16px;display:grid;gap:16px}
 #screenBox{background:#c9c5bb;border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:10px;justify-items:center}
 #bezel{background:#ebe7dc;border-radius:10px;padding:18px 18px 26px;box-shadow:inset 0 0 0 1px #cfcabd,0 2px 0 #b3ad9f;width:100%;display:grid;justify-items:center}
@@ -64,7 +64,7 @@ section.wide{grid-column:1/-1}
 .disk .nm{flex:1 1 240px;min-width:0}.disk .nm b{word-break:break-word}.disk.cur .nm b::after{content:'  \2022  in use';color:var(--accent);font-weight:600}
 textarea{width:100%;min-height:70px;font:13px ui-monospace,Menlo,Consolas,monospace;border:1px solid var(--line);border-radius:6px;padding:6px}
 </style></head><body>
-<header><div id="dot"></div><b>)HTML" BOARD_HEADER R"HTML(</b><span id="hdr">connecting...</span></header>
+<header><div id="dot"></div><b>)HTML" BOARD_HEADER R"HTML(</b><span class="ver">v)HTML" FW_VERSION R"HTML(</span><span id="hdr">connecting...</span></header>
 <main>
 <div id="screenBox">
  <div id="bezel"><canvas id="scr" width="512" height="342" tabindex="0"></canvas></div>
@@ -312,7 +312,7 @@ function kb(n){return Math.round(n/1024)+' KB'}
 let boardWasDown=false,asleep=false;
 async function status(){try{const s=await (await fetch('/api/status',{cache:'no-store'})).json();lastStatus=s;
  if(boardWasDown){boardWasDown=false;reconnect()}
- const rows=[['Mac',s.state],['RAM',s.ram?kb(s.ram):'-'],['Speed',s.speed+'% of real speed'+(s.turbo?' (turbo)':'')],['Viewers',(s.web?'browser ':'')+(s.vnc?'VNC':'')||'none'],
+ const rows=[['Mac',s.state],['Firmware','v)HTML" FW_VERSION R"HTML( for )HTML" BOARD_MODEL R"HTML('],['RAM',s.ram?kb(s.ram):'-'],['Speed',s.speed+'% of real speed'+(s.turbo?' (turbo)':'')],['Viewers',(s.web?'browser ':'')+(s.vnc?'VNC':'')||'none'],
   ['Battery',s.batText||'-'],['Up',s.uptime!==undefined?(s.uptime<120?s.uptime+' s':Math.round(s.uptime/60)+' min')+' · last start: '+s.reset:'-'],['Address',s.ip+)HTML" ADDR_NOTE R"HTML(],['Free memory',kb(s.heap)+' (largest piece '+kb(s.heapBlock||0)+')']];
  $('st').innerHTML=rows.map(r=>'<dt>'+r[0]+'</dt><dd>'+esc(String(r[1]))+'</dd>').join('');
  $('hdr').textContent=s.state+' · '+(s.ram?kb(s.ram):'')+(s.bat>0&&s.bat<=4300?' · battery '+s.batPct+'%':'');

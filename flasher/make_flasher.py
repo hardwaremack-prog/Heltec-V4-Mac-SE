@@ -32,7 +32,10 @@ pairs = [p.strip().split(' as ') for p in m.group(1).split(',')]
 js = js[:m.start()] + 'window.esptool={' + ','.join(f'{b}:{a}' for a, b in pairs) + '};'
 js = '/* esptool-js 0.5.7, Copyright Espressif Systems, Apache License 2.0 */\n' + js.replace('</script', '<\\/script')
 data = open(fw, 'rb').read()
-info = f"({len(data)//1024} KB, md5 {hashlib.md5(data).hexdigest()[:8]})"
+# the version, from the "<name> firmware vX.Y.Z" line the firmware prints at start-up
+vm = re.search(rb' firmware v([0-9][0-9A-Za-z.\-]*)\x00', data)
+ver = vm.group(1).decode() if vm else None
+info = (f"v{ver} " if ver else "") + f"({len(data)//1024} KB, md5 {hashlib.md5(data).hexdigest()[:8]})"
 t = open('template.html', encoding='utf-8').read()
 for k, v in BOARDS.items():
     if k != 'OUT': t = t.replace('%%' + k + '%%', v)
