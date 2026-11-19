@@ -18,7 +18,7 @@ BOARDS = {
               PORTHELP='Click <b>Connect</b> and pick the board. The V4 uses the ESP32-S3&apos;s own USB: on Windows it shows as <b>USB JTAG/serial debug unit</b> or <b>USB Serial Device</b> (COM port); on a Mac, <b>usbmodem</b>.',
               DRIVERHELP='The V4 needs no extra driver: it uses the ESP32-S3&apos;s own USB. If it doesn&apos;t show up, put it in download mode (hold <kbd>PRG</kbd>, tap <kbd>RST</kbd>, let go) and click Connect again.',
               WRONGBOARD='Is this a V3? Use Heltec-V3-Mac128k-Flasher.html for the V3.', BACKUP='heltec-v4-macse-backup', OUT='Heltec-V4-Mac-SE-Flasher.html'),
-  'esp32': dict(NAME='ESP32 Mac 128K', BOARD='plain ESP32 dev board (NodeMCU-32S / ESP32-DevKitC)', SHORT='ESP32 board', AP='ESP32-Mac-Setup', FLASHMB='4',
+  'esp32': dict(NAME='ESP32 Mac 128K', BOARD='plain ESP32 dev board (NodeMCU-32S / ESP32-DevKitC)', SHORT='ESP32 board', AP='Macintosh128k', FLASHMB='4',
               APPASS='macintosh128k', APIP='10.1.1.250', BAUD='115200', PRG='BOOT', RST='EN', CHIPRE='/^ESP32(?!-[SCHP])/i', CHIPNAME='ESP32 (ESP32-WROOM)',
               OTHERCHIP='For a Heltec V3 use Heltec-V3-Mac128k-Flasher.html; for a V4, Heltec-V4-Mac-SE-Flasher.html.',
               RESTARTHINT='if it doesn&apos;t, press <kbd>EN</kbd> once. The blue LED blinks slowly while it starts and then breathes once it&apos;s ready',

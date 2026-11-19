@@ -8,7 +8,7 @@
 
 // Firmware version: shown at the top of the web page, in the Status panel, on the serial port at
 // start-up and in the flasher (which reads it out of the firmware). Raise it with every release.
-#define FW_VERSION "1.5.0"
+#define FW_VERSION "1.5.1"
 #if defined(ARDUINO) && defined(__has_include)
 #if __has_include("sdkconfig.h")
 #include "sdkconfig.h"
@@ -40,7 +40,7 @@
 #elif defined(BOARD_ESP32)
 #define BOARD_NAME      "ESP32 Mac 128K"
 #define BOARD_HEADER    "ESP32 MAC 128K"
-#define BOARD_AP_SSID   "ESP32-Mac-Setup"
+#define BOARD_AP_SSID   "Macintosh128k"
 #define BOARD_HOSTNAME  "mac128k"
 #define BOARD_OLED      " ESP32 MAC"
 #define BOARD_MODEL     "ESP32 dev board (NodeMCU)"
