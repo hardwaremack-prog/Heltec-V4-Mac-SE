@@ -298,7 +298,7 @@ window.addEventListener('resize',fitScreen);document.addEventListener('fullscree
 (window.matchMedia?matchMedia('(resolution: '+(window.devicePixelRatio||1)+'dppx)'):null)?.addEventListener?.('change',fitScreen);
 fitScreen();
 $('bReboot').onclick=async()=>{if(!confirm('Restart the whole )HTML" BOARD_KIND R"HTML(? The disk is saved first; unsaved work on the Mac is lost.'))return;
- try{await post('/api/reboot')}catch(e){}msg(lastStatus.mode=='ap'?'Restarting the board. Its hotspot is off for a few seconds; if this computer doesn\'t rejoin )HTML" BOARD_AP_SSID R"HTML( by itself, pick it in your Wi-Fi list.':'Restarting the board...');waitForBoard()};
+ try{await post('/api/reboot')}catch(e){}msg(lastStatus.mode=='ap'?'Restarting the board. Its hotspot is off for a few seconds; if this computer doesn\'t rejoin '+(lastStatus.apSsid||')HTML" BOARD_AP_SSID R"HTML(')+' by itself, pick it in your Wi-Fi list.':'Restarting the board...');waitForBoard()};
 $('bSleep').onclick=async()=>{if(!confirm('Put the )HTML" BOARD_KIND R"HTML( to sleep? The disk is saved first. Press )HTML" BTN_WAKE R"HTML( on the board to wake it.'))return;
  try{await post('/api/sleep')}catch(e){}asleep=true;msg('The board is asleep. Press )HTML" BTN_WAKE R"HTML( on the board to wake it; this page reconnects by itself.');
  await new Promise(r=>setTimeout(r,4000));
@@ -319,7 +319,7 @@ async function status(){try{const s=await (await fetch('/api/status',{cache:'no-
  $('romState').innerHTML=s.romOk?'<span class="ok">ROM loaded: '+esc(s.romName)+'</span>':'<span class="bad">No ROM yet - upload yours to start the Mac.</span>';
  renderLib(s);
  $('diskRO').classList.toggle('on',!!s.diskRO);$('turbo').textContent='Turbo: '+(s.turbo?'on':'off');$('turbo').classList.toggle('on',!!s.turbo);
- $('ram').value=String(s.ramSetting);$('wifiState').textContent=s.mode=='ap'?'Hotspot mode: join )HTML" BOARD_AP_SSID R"HTML(, then pick your network.':'Connected to '+s.ssid+' ('+s.rssi+' dBm)';
+ $('ram').value=String(s.ramSetting);$('wifiState').textContent=s.mode=='ap'?'Hotspot mode: join '+(s.apSsid||')HTML" BOARD_AP_SSID R"HTML(')+', then pick your network.':'Connected to '+s.ssid+' ('+s.rssi+' dBm)';
 }catch(e){boardWasDown=true;if(asleep)$('hdr').textContent='Asleep · press )HTML" BTN_WAKE R"HTML( on the board to wake it'}}
 // After a restart, don't reload the page (that would lose the sound you switched on with your
 // click); wait for the board to answer again. The screen reconnects by itself, and the board

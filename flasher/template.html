@@ -68,7 +68,7 @@ kbd{font:12px var(--mono);border:1px solid var(--line);border-bottom-width:2px;b
 <p class="status" id="backupMsg"></p></section>
 
 <section class="step" id="s3"><h2><span class="n">4</span>First start</h2>
-<p>The board restarts by itself (%%RESTARTHINT%%). Then join the Wi-Fi hotspot <b>%%AP%%</b> (password <code>%%APPASS%%</code>), open <b>http://%%APIP%%</b>, pick your home network, and upload your ROM and a disk on the page it shows next.</p></section>
+<p>The board restarts by itself (%%RESTARTHINT%%). Then join the Wi-Fi hotspot <b id="apName">%%AP%%%%APTAIL%%</b> (password <code>%%APPASS%%</code>), open <b>http://%%APIP%%</b>, pick your home network, and upload your ROM and a disk on the page it shows next.</p></section>
 
 <section class="step" id="s5"><h2><span class="n">5</span>Watch the board start (optional)</h2>
 <p>Shows what the board prints while it starts: Wi-Fi, memory and whether the Mac started. Useful if it gets stuck. Click <b>Disconnect</b> above first if you're still connected for flashing.</p>
@@ -150,6 +150,12 @@ $('connect').onclick = async () => {
     const flashId = await loader.readFlashId().catch(() => 0);
     const sizeMB = flashId ? (1 << ((flashId >> 16) & 0xff)) / 1048576 : 0; flashBytes = sizeMB ? sizeMB * 1048576 : 8 * 1048576;
     $('chipInfo').textContent = `${chip}${mac ? '  ·  MAC ' + mac : ''}${sizeMB ? '  ·  ' + sizeMB + ' MB flash' : ''}`;
+    // Boards whose hotspot name ends in the last 4 of their MAC: work it out (the hotspot's MAC
+    // is the board's own plus one) so step 4 shows the exact name to look for.
+    if ('%%APTAIL%%' && /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(mac)) {
+      const n = (parseInt(mac.slice(-5).replace(':', ''), 16) + 1) & 0xFFFF;
+      $('apName').textContent = '%%AP%%-' + n.toString(16).toUpperCase().padStart(4, '0');
+    }
     if (!%%CHIPRE%%.test(chip)) set('connMsg', 'Connected, but this isn\'t an %%CHIPNAME%%. %%NAME%% is for the %%BOARD%%. %%OTHERCHIP%%', 'warn');
     else if (sizeMB && sizeMB < %%FLASHMB%%) set('connMsg', 'Connected, but the board has less than %%FLASHMB%% MB of flash; %%NAME%% needs %%FLASHMB%% MB. %%WRONGBOARD%%', 'warn');
     else { set('connMsg', 'Connected to the board.', 'ok'); $('s1').classList.add('done'); }

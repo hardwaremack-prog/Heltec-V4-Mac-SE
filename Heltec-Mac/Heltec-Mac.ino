@@ -20,6 +20,7 @@
 #include <time.h>
 #include <esp_sleep.h>
 #include <esp_wifi.h>
+#include <esp_mac.h>
 #include <WiFiUdp.h>
 #include <lwip/sockets.h>
 #include <errno.h>
@@ -65,7 +66,7 @@ extern "C" {
 #define NET_STACK 12288
 #endif
 
-static const char* AP_SSID = BOARD_AP_SSID;
+static String AP_SSID = BOARD_AP_SSID;   // on some boards, + "-" and the last 4 of its MAC (setup)
 static const char* AP_PASS = BOARD_AP_PASS;
 static const char* HOSTNAME = BOARD_HOSTNAME;
 #ifdef HELTEC_V4
@@ -345,7 +346,7 @@ static void drawOled() {
     oled.text(0, 0, line, true);
     if (apMode) {
       oled.text(0, 2, "WIFI SETUP:");
-      oled.text(0, 3, AP_SSID);
+      oled.text(0, 3, AP_SSID.c_str());
       oled.text(0, 4, "PASSWORD: HELTECMAC");
       oled.text(0, 5, "OPEN " BOARD_AP_IP_STR);
     } else {
@@ -510,7 +511,7 @@ static void setupWeb() {
     uint8_t ck4[8] = {(uint8_t)(m.romChecksum >> 24), (uint8_t)(m.romChecksum >> 16), (uint8_t)(m.romChecksum >> 8), (uint8_t)m.romChecksum, 0, 0, 0, 0};
     RomInfo ri = identifyRom(ck4, 8);
     String j = "{";
-    j += "\"ip\":\"" + ipText() + "\",\"mode\":\"" + String(apMode ? "ap" : "sta") + "\",";
+    j += "\"ip\":\"" + ipText() + "\",\"mode\":\"" + String(apMode ? "ap" : "sta") + "\",\"apSsid\":\"" + AP_SSID + "\",";
     j += "\"ssid\":\"" + jsonEsc(WiFi.SSID()) + "\",\"rssi\":" + String(WiFi.RSSI()) + ",";
     j += "\"state\":\"" + jsonEsc(String(stateText()) + (startError.size() && !mac.running() ? String(" - ") + startError.c_str() : "")) + "\",";
     j += "\"ram\":" + String(mac.ramBytes()) + ",\"ramSetting\":" + String(m.ramSetting) + ",";
@@ -744,6 +745,14 @@ static void netTask(void*) {
 void setup() {
   Serial.begin(115200);
   Serial.println(BOARD_NAME " firmware v" FW_VERSION);
+#ifdef BOARD_AP_SSID_SUFFIX
+  {   // several of these boards in one place each get their own hotspot name
+    uint8_t m[6];
+    esp_read_mac(m, ESP_MAC_WIFI_SOFTAP);
+    char sfx[8]; snprintf(sfx, sizeof sfx, "-%02X%02X", m[4], m[5]);
+    AP_SSID += sfx;
+  }
+#endif
 #ifdef BOARD_ESP32
   // A plain ESP32's free memory comes in several pieces, none of them 128 KB, so the Mac's RAM
   // is four 32 KB banks (see machw.h). Set them aside now, before Wi-Fi takes its share.
@@ -831,7 +840,7 @@ void setup() {
     apChannel = ch;
     WiFi.mode(WIFI_AP);   // hotspot only: no station side to wander off-channel (Scan turns it on briefly)
     WiFi.setSleep(false);
-    WiFi.softAP(AP_SSID, AP_PASS, ch, 0, 2);
+    WiFi.softAP(AP_SSID.c_str(), AP_PASS, ch, 0, 2);
     {
       IPAddress ip(BOARD_AP_IP), lease(BOARD_AP_IP);
       lease[3] = lease[3] >= 100 && lease[3] < 200 ? lease[3] + 1 : 100;   // devices get .100 and up
